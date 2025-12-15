@@ -20,7 +20,7 @@ public enum KBPopupShape {
         let midX = keyRect.midX - baseRect.minX
         let path = UIBezierPath()
 
-        // Top rounded
+        // Top rounded 
         path.move(to: CGPoint(x: corner, y: 0))
         path.addLine(to: CGPoint(x: w - corner, y: 0))
         path.addQuadCurve(to: CGPoint(x: w, y: corner), controlPoint: CGPoint(x: w, y: 0))

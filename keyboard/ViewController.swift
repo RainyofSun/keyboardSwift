@@ -12,12 +12,35 @@ class ViewController: UIViewController {
     private lazy var textFiled = UITextField(frame: CGRect(origin: CGPointMake(30, 300), size: CGSizeMake(UIScreen.main.bounds.width - 60, 45)))
     private lazy var keyboardInputView = KBKeyboardViewFull(frame: CGRect(origin: CGPointZero, size: CGSizeMake(UIScreen.main.bounds.width, 250)))
     
+    private lazy var capView: UIView = UIView(frame: CGRect(x: 30, y: 500, width: 40, height: 45))
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         self.textFiled.borderStyle = .roundedRect
         self.view.addSubview(textFiled)
+        self.view.addSubview(self.capView)
+        self.capView.layer.cornerRadius = 4
+        self.capView.clipsToBounds = true
+        self.capView.backgroundColor = UIColor.red
+        
         self.textFiled.inputView = self.keyboardInputView
         self.keyboardInputView.keyboardDelegate = self
+        
+        let popup = KeyPopupView(candidates: ["a", "b", "c"])
+        popup.alpha = 0
+        popup.layer.opacity = 0
+
+        self.view.addSubview(popup)
+        popup.layout(pointingTo: self.capView.frame, in: self.view)
+        
+        popup.selectedIndex = 0
+
+        // simple appear animation
+        popup.transform = CGAffineTransform(scaleX: 0.9, y: 0.9).translatedBy(x: 0, y: 6)
+        UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseOut], animations: {
+            popup.alpha = 1
+            popup.transform = .identity
+        }, completion: nil)
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {

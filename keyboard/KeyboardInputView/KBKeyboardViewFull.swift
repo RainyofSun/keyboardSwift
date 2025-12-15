@@ -210,7 +210,9 @@ class KBKeyboardViewFull: UIView {
             self.popupPresenter?.show(for: key, from: key.frame, in: self)
         })
 
-        if enableClickSound { AudioServicesPlaySystemSound(1104) }
+        if enableClickSound {
+            AudioServicesPlaySystemSound(1104)
+        }
     }
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -229,7 +231,9 @@ class KBKeyboardViewFull: UIView {
                 activeKeyID = id
                 animatePressDown(keyID: id)
                 selectionHaptic.selectionChanged()
-                if enableClickSound { AudioServicesPlaySystemSound(1104) }
+                if enableClickSound {
+                    AudioServicesPlaySystemSound(1104)
+                }
             }
         } else {
             // left keys area
@@ -283,9 +287,10 @@ class KBKeyboardViewFull: UIView {
         guard let layer = keyLayers[keyID] else { return }
         // immediate transform with UIView animation for spring-friendly behavior on release
         UIView.animate(withDuration: 0.06, delay: 0, options: [.beginFromCurrentState], animations: {
-            layer.setAffineTransform(CGAffineTransform(scaleX: 0.96, y: 0.96))
-            layer.shadowOffset = CGSize(width: 0, height: 1)
-            layer.shadowRadius = 3
+//            layer.setAffineTransform(CGAffineTransform(scaleX: 0.96, y: 0.96))
+//            layer.shadowOffset = CGSize(width: 0, height: 1)
+//            layer.shadowRadius = 3
+            layer.backgroundColor = UIColor.lightGray.cgColor
             layer.shadowOpacity = 0.22
         })
 
@@ -304,9 +309,10 @@ class KBKeyboardViewFull: UIView {
         guard let layer = keyLayers[keyID] else { completion?(); return }
 
         UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 8, options: [.allowUserInteraction], animations: {
-            layer.setAffineTransform(.identity)
-            layer.shadowOffset = CGSize(width: 0, height: 3)
-            layer.shadowRadius = 6
+//            layer.setAffineTransform(.identity)
+//            layer.shadowOffset = CGSize(width: 0, height: 3)
+//            layer.shadowRadius = 6
+            layer.backgroundColor = self.keyBackgroundColor.cgColor
             layer.shadowOpacity = 0.18
         }, completion: { _ in
             // restore highlight
@@ -355,9 +361,9 @@ class KBKeyboardViewFull: UIView {
         if let proxy = documentProxy {
             proxy.insertText(text)
         } else {
-            // fallback: inform delegate via Notification or other mechanism — here we play click
-            // For demo purposes we'll play click and do nothing else
-            if enableClickSound { AudioServicesPlaySystemSound(1104) }
+//            if enableClickSound {
+//                AudioServicesPlaySystemSound(1104)
+//            }
         }
     }
 
@@ -365,7 +371,9 @@ class KBKeyboardViewFull: UIView {
         if let proxy = documentProxy {
             proxy.deleteBackward()
         } else {
-            if enableClickSound { AudioServicesPlaySystemSound(1104) }
+            if enableClickSound {
+                AudioServicesPlaySystemSound(1104)
+            }
         }
     }
 }
