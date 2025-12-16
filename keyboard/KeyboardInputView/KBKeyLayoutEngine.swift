@@ -95,10 +95,46 @@ class KBKeyLayoutEngine: NSObject {
 
             // save back
             rows[rowIndex] = row
-
+            // update key position
+            updateKeyPositions(for: &row)
+            
             currentY += rowHeight + keySpacing
         }
 
         return rows
+    }
+    
+    private func updateKeyPositions(for row: inout KBKeyRow) {
+        guard row.keys.count > 0 else { return }
+
+        // 行起始 & 结束
+        let rowMinX = row.keys.first!.frame.minX
+        let rowMaxX = row.keys.last!.frame.maxX
+        let rowCenterX = (rowMinX + rowMaxX) / 2
+
+        // 容错阈值（防止浮点误差）
+        let edgeTolerance: CGFloat = 1.0
+        let centerTolerance: CGFloat = 6.0
+
+        for i in 0..<row.keys.count {
+            let keyFrame = row.keys[i].frame
+            let keyCenterX = keyFrame.midX
+
+            let position: KeyPosition
+
+            if abs(keyFrame.minX - rowMinX) < edgeTolerance {
+                position = .leftEdge
+            } else if abs(keyFrame.maxX - rowMaxX) < edgeTolerance {
+                position = .rightEdge
+            } else if abs(keyCenterX - rowCenterX) < centerTolerance {
+                position = .center
+            } else if keyCenterX < rowCenterX {
+                position = .left
+            } else {
+                position = .right
+            }
+
+            row.keys[i].keyLocation = position
+        }
     }
 }

@@ -7,6 +7,105 @@
 
 import UIKit
 
+extension KeyPosition {
+    
+    func path(baseRect: CGRect, keyRect: CGRect, corner: CGFloat = 4) -> UIBezierPath {
+        switch self {
+        case .leftEdge:
+            return drawLeftEdgePopPath(baseRect: baseRect, keyRect: keyRect, corner: corner)
+        case .left:
+            return drawLeftPopPath(baseRect: baseRect, keyRect: keyRect, corner: corner)
+        case .center:
+            return drawCenterPopPath(baseRect: baseRect, keyRect: keyRect, corner: corner)
+        case .right:
+            return drawRightPopPath(baseRect: baseRect, keyRect: keyRect, corner: corner)
+        case .rightEdge:
+            return drawRightEdgePopPath(baseRect: baseRect, keyRect: keyRect, corner: corner)
+        }
+    }
+    
+    private func drawCenterPopPath(baseRect: CGRect, keyRect: CGRect, corner: CGFloat = 4) -> UIBezierPath {
+        
+        let path = UIBezierPath()
+        
+        // 左下角
+        let leftBottomStartPoint: CGPoint = CGPoint.init(x: (baseRect.width - keyRect.width) * 0.5 + corner, y: 0)
+        let leftBottomEndPoint: CGPoint = CGPoint.init(x: baseRect.width - keyRect.width, y: keyRect.height * 0.5)
+//        let leftBottomControlPoint: CGPoint = CGPoint.init(x: (baseRect.width - keyRect.width) * 0.5, y: alienViewSize.height)
+        
+        path.move(to: leftBottomStartPoint)
+//        path.addQuadCurve(to: leftBottomEndPoint, controlPoint: leftBottomControlPoint)
+//        
+//        let radiusScale: CGFloat = 1.75
+//        // 拐角1
+//        let leftCorner1StartPoint: CGPoint = CGPoint.init(x: (alienViewSize.width - translateFrame.width) * 0.5, y: alienViewSize.height * alienHeightRatio2 + radius * radiusScale)
+//        let leftConner1ControlPoint: CGPoint = CGPoint.init(x: (alienViewSize.width - translateFrame.width) * 0.5, y: alienViewSize.height * alienHeightRatio2)
+//        
+//        path.addLine(to: leftCorner1StartPoint)
+//        
+//        // 拐角2
+//        let leftCorner2EndPoint: CGPoint = CGPoint.init(x: 0, y: alienViewSize.height * alienHeightRatio1 - radius * radiusScale)
+//        let leftConner2ControlPoint: CGPoint = CGPoint.init(x: 0, y: alienViewSize.height * alienHeightRatio1)
+//
+//        path.addCurve(to: leftCorner2EndPoint, controlPoint1: leftConner1ControlPoint, controlPoint2: leftConner2ControlPoint)
+//        
+//        // 左上角
+//        let leftTopStartPoint: CGPoint = CGPoint.init(x: 0, y: radius * 2)
+//        let leftTopEndPoint: CGPoint = CGPoint.init(x: radius * 2, y: 0)
+//        let leftTopControlPoint: CGPoint = CGPoint.init(x: 0, y: 0)
+//        
+//        path.addLine(to: leftTopStartPoint)
+//        path.addQuadCurve(to: leftTopEndPoint, controlPoint: leftTopControlPoint)
+//    
+//        // 右上角
+//        let rightTopStartPoint: CGPoint = CGPoint.init(x: alienViewSize.width - radius * 2, y: 0)
+//        let rightTopEndPoint: CGPoint = CGPoint.init(x: alienViewSize.width, y: radius * 2)
+//        let rightTopControlPoint: CGPoint = CGPoint.init(x: alienViewSize.width, y: 0)
+//        
+//        path.addLine(to: rightTopStartPoint)
+//        path.addQuadCurve(to: rightTopEndPoint, controlPoint: rightTopControlPoint)
+//        
+//        // 拐角1
+//        let rightCorner1StartPoint: CGPoint = CGPoint.init(x: alienViewSize.width, y: alienViewSize.height * alienHeightRatio1 - radius * radiusScale)
+//        let rightConner1ControlPoint: CGPoint = CGPoint.init(x: alienViewSize.width, y: alienViewSize.height * alienHeightRatio1)
+//        
+//        path.addLine(to: rightCorner1StartPoint)
+//        
+//        // 拐角2
+//        let rightCorner2EndPoint: CGPoint = CGPoint.init(x: (alienViewSize.width + translateFrame.width) * 0.5, y: alienViewSize.height * alienHeightRatio2 + radius * radiusScale)
+//        let rightConner2ControlPoint: CGPoint = CGPoint.init(x: (alienViewSize.width + translateFrame.width) * 0.5, y: alienViewSize.height * alienHeightRatio2)
+//        
+//        path.addCurve(to: rightCorner2EndPoint, controlPoint1: rightConner1ControlPoint, controlPoint2: rightConner2ControlPoint)
+//        
+//        // 右下角
+//        let rightBottomStartPoint: CGPoint = CGPoint.init(x: (alienViewSize.width + translateFrame.width) * 0.5, y: alienViewSize.height - radius)
+//        let rightBottomEndPoint: CGPoint = CGPoint.init(x: (alienViewSize.width + translateFrame.width) * 0.5 - radius, y: alienViewSize.height)
+//        let rightBottomControlPoint: CGPoint = CGPoint.init(x: (alienViewSize.width + translateFrame.width) * 0.5, y: alienViewSize.height)
+//        
+//        path.addLine(to: rightBottomStartPoint)
+//        path.addQuadCurve(to: rightBottomEndPoint, controlPoint: rightBottomControlPoint)
+        
+        path.close()
+        return path
+    }
+    
+    private func drawLeftPopPath(baseRect: CGRect, keyRect: CGRect, corner: CGFloat = 8) -> UIBezierPath {
+        return UIBezierPath()
+    }
+    
+    private func drawLeftEdgePopPath(baseRect: CGRect, keyRect: CGRect, corner: CGFloat = 8) -> UIBezierPath {
+        return UIBezierPath()
+    }
+    
+    private func drawRightPopPath(baseRect: CGRect, keyRect: CGRect, corner: CGFloat = 8) -> UIBezierPath {
+        return UIBezierPath()
+    }
+    
+    private func drawRightEdgePopPath(baseRect: CGRect, keyRect: CGRect, corner: CGFloat = 8) -> UIBezierPath {
+        return UIBezierPath()
+    }
+}
+
 public enum KBPopupShape {
     case center(count: Int)
     case left(count: Int)

@@ -16,6 +16,14 @@ public enum KeyType {
     case special
 }
 
+public enum KeyPosition {
+    case leftEdge
+    case left
+    case center
+    case right
+    case rightEdge
+}
+
 struct KBKey {
     /// 键 Id
     var keyId: String
@@ -27,13 +35,16 @@ struct KBKey {
     var alternatives: [String]?
     /// key类型
     var keyType: KeyType = .character
+    /// key 的位置
+    var keyLocation: KeyPosition = .center
     
-    init(keyId: String, frame: CGRect = .zero, keyLabel: String, alternatives: [String]? = [], keyType: KeyType = .character) {
+    init(keyId: String, frame: CGRect = .zero, keyLabel: String, alternatives: [String]? = [], keyType: KeyType = .character, keyLocation location: KeyPosition = .center) {
         self.keyId = keyId
         self.frame = frame
         self.keyLabel = keyLabel
         self.alternatives = alternatives
         self.keyType = keyType
+        self.keyLocation = location
     }
 }
 

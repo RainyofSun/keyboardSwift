@@ -26,8 +26,13 @@ public class KeyPopupView: UIView {
     public var font: UIFont = .systemFont(ofSize: 20)
     
     private var itemFrames: [CGRect] = []   // 每个候选的绘制区域
+    private var _key_position: KeyPosition = .center
+    private var _t_rect: CGRect = .zero
+    // 弹窗键帽与键盘键帽的高度比
+    private var _height_scale: CGFloat = 1.0
     
-    public init(candidates: [String]) {
+    public init(candidates: [String], keyPosition position: KeyPosition) {
+        self._key_position = position
         self.candidates = candidates
         super.init(frame: .zero)
         backgroundColor = .clear
@@ -43,8 +48,10 @@ public class KeyPopupView: UIView {
 
     // MARK: - Layout popup position above/below key
     public func layout(pointingTo target: CGRect, in parent: UIView) {
+        // TODO 转换坐标
+        self._t_rect = target
         let totalWidth = calculateTotalWidth()
-        let popupHeight: CGFloat = 44 + contentInset.top + contentInset.bottom + arrowHeight
+        let popupHeight: CGFloat = target.height * _height_scale + contentInset.top + contentInset.bottom
 
         var x = target.midX - totalWidth / 2
         x = max(8, min(x, parent.bounds.width - totalWidth - 8))
@@ -107,25 +114,26 @@ public class KeyPopupView: UIView {
                                 width: rect.width,
                                 height: rect.height - arrowHeight)
 
-        let path = UIBezierPath(roundedRect: bubbleRect, cornerRadius: cornerRadius)
+//        let path = UIBezierPath(roundedRect: bubbleRect, cornerRadius: cornerRadius)
 
-        // arrow shape
-        let arrowPath = UIBezierPath()
-        if placedAbove {
-            arrowPath.move(to: CGPoint(x: arrowCenterX - arrowWidth/2, y: bubbleRect.maxY))
-            arrowPath.addLine(to: CGPoint(x: arrowCenterX, y: bubbleRect.maxY + arrowHeight))
-            arrowPath.addLine(to: CGPoint(x: arrowCenterX + arrowWidth/2, y: bubbleRect.maxY))
-        } else {
-            arrowPath.move(to: CGPoint(x: arrowCenterX - arrowWidth/2, y: bubbleRect.minY))
-            arrowPath.addLine(to: CGPoint(x: arrowCenterX, y: bubbleRect.minY - arrowHeight))
-            arrowPath.addLine(to: CGPoint(x: arrowCenterX + arrowWidth/2, y: bubbleRect.minY))
-        }
+//        // arrow shape
+//        let arrowPath = UIBezierPath()
+//        if placedAbove {
+//            arrowPath.move(to: CGPoint(x: arrowCenterX - arrowWidth/2, y: bubbleRect.maxY))
+//            arrowPath.addLine(to: CGPoint(x: arrowCenterX, y: bubbleRect.maxY + arrowHeight))
+//            arrowPath.addLine(to: CGPoint(x: arrowCenterX + arrowWidth/2, y: bubbleRect.maxY))
+//        } else {
+//            arrowPath.move(to: CGPoint(x: arrowCenterX - arrowWidth/2, y: bubbleRect.minY))
+//            arrowPath.addLine(to: CGPoint(x: arrowCenterX, y: bubbleRect.minY - arrowHeight))
+//            arrowPath.addLine(to: CGPoint(x: arrowCenterX + arrowWidth/2, y: bubbleRect.minY))
+//        }
+//
+//        path.append(arrowPath)
+//
+//        UIColor.systemBackground.setFill()
+//        path.fill()
 
-        path.append(arrowPath)
-
-        UIColor.systemBackground.setFill()
-        path.fill()
-
+        let path = self._key_position.path(baseRect: rect, keyRect: self._t_rect)
         // Draw highlight
         if selectedIndex < itemFrames.count {
             let selected = itemFrames[selectedIndex]
