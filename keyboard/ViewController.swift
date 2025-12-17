@@ -26,7 +26,7 @@ class ViewController: UIViewController {
         self.textFiled.inputView = self.keyboardInputView
         self.keyboardInputView.keyboardDelegate = self
         
-        let popup = KeyPopupView(candidates: ["a", "b", "c"])
+        let popup = KeyPopupView(candidates: ["a", "b", "c"], keyPosition: KeyPosition.center)
         popup.alpha = 0
         popup.layer.opacity = 0
 

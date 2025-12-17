@@ -18,7 +18,7 @@ final class DefaultPopupPresenter: PopupPresenter {
         
         guard let _al = key.alternatives else { return }
 
-        let popup = KeyPopupView(candidates: _al)
+        let popup = KeyPopupView(candidates: _al, keyPosition: key.keyLocation)
         popup.alpha = 0
         popup.layer.opacity = 0
 
