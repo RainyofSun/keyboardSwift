@@ -34,13 +34,7 @@ class ViewController: UIViewController {
         popup.layout(pointingTo: self.capView.frame, in: self.view)
         
         popup.selectedIndex = 0
-
-        // simple appear animation
-        popup.transform = CGAffineTransform(scaleX: 0.9, y: 0.9).translatedBy(x: 0, y: 6)
-        UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseOut], animations: {
-            popup.alpha = 1
-            popup.transform = .identity
-        }, completion: nil)
+        popup.animateAppear()
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {

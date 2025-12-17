@@ -28,7 +28,7 @@ class KBKeyboardViewFull: UIView {
     // Runtime storage
     private var rows: [KBKeyRow] = []
     private var keysFlat: [KBKey] = []
-    private var keyLayers: [String: CALayer] = [:]       // id -> key layer
+    private var keyLayers: [String: KBBaseKeyLayer] = [:]       // id -> key layer
     private var textLayers: [String: CATextLayer] = [:]  // id -> text layer
 
     // Touch state
@@ -88,16 +88,15 @@ class KBKeyboardViewFull: UIView {
 
         for key in keysFlat {
             let id = key.keyId
-            var layer: CALayer
+            var layer: KBBaseKeyLayer
             let config = KBKeyLayerConfig.init(keyBackgroundColor: keyBackgroundColor, cornerRadius: cornerRadius)
             if let l = keyLayers[id] {
                 layer = l
             } else {
-//                if key.keyType == .delete {
-//                    layer = KBDeleteKeyLayer(config: config)
-//                }
-//                layer = KBCharacterKeyLayer(config: config)
-                layer = createKeyLayer()
+                if key.keyType == .delete {
+                    layer = KBDeleteKeyLayer(config: config)
+                }
+                layer = KBCharacterKeyLayer(config: config)
                 keyLayers[id] = layer
                 self.layer.addSublayer(layer)
             }
@@ -140,54 +139,6 @@ class KBKeyboardViewFull: UIView {
         }
     }
 
-    // Create a layer that looks like a system keycap (rounded, inner highlight, bottom separator)
-    private func createKeyLayer() -> CALayer {
-        let layer = CALayer()
-        layer.backgroundColor = keyBackgroundColor.cgColor
-        layer.cornerRadius = cornerRadius
-        layer.masksToBounds = false
-
-        // outer shadow for elevation
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.18
-        layer.shadowRadius = 6
-        layer.shadowOffset = CGSize(width: 0, height: 3)
-
-        // top highlight gradient (inner light)
-        let grad = CAGradientLayer()
-        grad.name = "highlight"
-        grad.colors = [UIColor(white: 1.0, alpha: 0.18).cgColor, UIColor(white: 1.0, alpha: 0.02).cgColor]
-        grad.startPoint = CGPoint(x: 0.5, y: 0)
-        grad.endPoint = CGPoint(x: 0.5, y: 1)
-        grad.frame = layer.bounds
-        grad.cornerRadius = cornerRadius
-        layer.addSublayer(grad)
-
-        // subtle bottom shade
-        let bottomShade = CAGradientLayer()
-        bottomShade.name = "bottomShade"
-        bottomShade.colors = [UIColor.clear.cgColor, UIColor(white: 0, alpha: 0.06).cgColor]
-        bottomShade.startPoint = CGPoint(x: 0.5, y: 0)
-        bottomShade.endPoint = CGPoint(x: 0.5, y: 1)
-        bottomShade.frame = layer.bounds
-        bottomShade.cornerRadius = cornerRadius
-        layer.addSublayer(bottomShade)
-
-        // separator
-        let sep = CALayer()
-        sep.name = "separator"
-        sep.backgroundColor = UIColor(white: 0.78, alpha: 1).cgColor
-        let scale = UIScreen.main.scale
-        sep.frame = CGRect(x: 0, y: layer.bounds.height - 1.0/scale, width: layer.bounds.width, height: 1.0/scale)
-        layer.addSublayer(sep)
-
-        // performance hint
-        layer.shouldRasterize = false
-        layer.rasterizationScale = UIScreen.main.scale
-
-        return layer
-    }
-
     // MARK: - Touch handling & animations
     private func keyId(at point: CGPoint) -> String? {
         return keysFlat.first { $0.frame.contains(point) }?.keyId
@@ -199,7 +150,9 @@ class KBKeyboardViewFull: UIView {
         isLongPressActive = false
 
         // press visual
-        animatePressDown(keyID: id)
+        if let _key_layer = keyLayers[id] {
+            _key_layer.animateKeyPressDown()
+        }
 
         // prepare haptics
         selectionHaptic.prepare()
@@ -232,9 +185,15 @@ class KBKeyboardViewFull: UIView {
         if let id = keyId(at: p) {
             if id != activeKeyID {
                 // previous key release visual
-                if let prev = activeKeyID { animatePressUp(keyID: prev) }
+                if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
+                    _pre_key_layer.animatePressUp()
+                }
                 activeKeyID = id
-                animatePressDown(keyID: id)
+                
+                if let _key_layer = keyLayers[id] {
+                    _key_layer.animateKeyPressDown()
+                }
+                
                 selectionHaptic.selectionChanged()
                 if enableClickSound {
                     AudioServicesPlaySystemSound(1104)
@@ -242,7 +201,9 @@ class KBKeyboardViewFull: UIView {
             }
         } else {
             // left keys area
-            if let prev = activeKeyID { animatePressUp(keyID: prev) }
+            if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
+                _pre_key_layer.animatePressUp()
+            }
             activeKeyID = nil
         }
     }
@@ -264,11 +225,13 @@ class KBKeyboardViewFull: UIView {
         // normal tap
         if let id = keyId(at: p), let key = keysFlat.first(where: { $0.keyId == id }) {
             // visual release
-            animatePressUp(keyID: id)
+            if let _press_layer = keyLayers[id] {
+                _press_layer.animatePressUp()
+            }
             performKeyAction(key)
             self.keyboardDelegate?.didSelectedKeyCap(capText: key.keyLabel)
-        } else if let prev = activeKeyID {
-            animatePressUp(keyID: prev)
+        } else if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
+            _pre_key_layer.animatePressUp()
         }
 
         cleanupTouch()
@@ -278,59 +241,15 @@ class KBKeyboardViewFull: UIView {
         longPressTimer?.invalidate()
         longPressTimer = nil
         if isLongPressActive { popupPresenter?.hide(); isLongPressActive = false }
-        if let id = activeKeyID { animatePressUp(keyID: id) }
+        if let id = activeKeyID, let _active_key_layer = keyLayers[id] {
+            _active_key_layer.animatePressUp()
+        }
         cleanupTouch()
     }
 
     private func cleanupTouch() {
         activeKeyID = nil
         selectionHaptic.prepare() // keep generator ready
-    }
-
-    // MARK: - Animations (press down / up)
-    private func animatePressDown(keyID: String) {
-        guard let layer = keyLayers[keyID] else { return }
-        // immediate transform with UIView animation for spring-friendly behavior on release
-        UIView.animate(withDuration: 0.06, delay: 0, options: [.beginFromCurrentState], animations: {
-//            layer.setAffineTransform(CGAffineTransform(scaleX: 0.96, y: 0.96))
-            layer.shadowOffset = CGSize(width: 0, height: 1)
-            layer.shadowRadius = 3
-            layer.backgroundColor = UIColor.lightGray.cgColor
-            layer.shadowOpacity = 0.22
-        })
-
-        // intensify highlight via opacity change
-        if let grad = layer.sublayers?.first(where: { $0.name == "highlight" }) as? CAGradientLayer {
-            let anim = CABasicAnimation(keyPath: "opacity")
-            anim.fromValue = grad.opacity
-            anim.toValue = 1.0
-            anim.duration = 0.12
-            grad.opacity = 1.0
-            grad.add(anim, forKey: "highlightIn")
-        }
-    }
-
-    private func animatePressUp(keyID: String, completion: (() -> Void)? = nil) {
-        guard let layer = keyLayers[keyID] else { completion?(); return }
-
-        UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 8, options: [.allowUserInteraction], animations: {
-//            layer.setAffineTransform(.identity)
-            layer.shadowOffset = CGSize(width: 0, height: 3)
-            layer.shadowRadius = 6
-            layer.backgroundColor = self.keyBackgroundColor.cgColor
-            layer.shadowOpacity = 0.18
-        }, completion: { _ in
-            // restore highlight
-            if let grad = layer.sublayers?.first(where: { $0.name == "highlight" }) as? CAGradientLayer {
-                let anim = CABasicAnimation(keyPath: "opacity")
-                anim.fromValue = grad.opacity
-                anim.toValue = 0.9
-                anim.duration = 0.12
-                grad.opacity = 0.9
-                grad.add(anim, forKey: "highlightOut")
-            }
-            completion?()
-        })
     }
 
     // MARK: - Key actions

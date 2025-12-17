@@ -12,6 +12,14 @@ struct KBKeyLayerConfig {
     var keyBackgroundColor: UIColor = UIColor(white: 0.98, alpha: 1)
     // 圆角
     var cornerRadius: CGFloat = 8
+    // 阴影颜色
+    var shadowColor: UIColor = UIColor.black
+    // 阴影透明度
+    var shadowOpacity: Float = 0.18
+    // 阴影圆角
+    var shadowRadius: CGFloat = 6.0
+    // 阴影扩散
+    var shadowOffset: CGSize = CGSize(width: 0, height: 3)
 }
 
 class KBBaseKeyLayer: CALayer {
@@ -64,9 +72,17 @@ class KBBaseKeyLayer: CALayer {
     private func apply(config: KBKeyLayerConfig) {
         backgroundColor = config.keyBackgroundColor.cgColor
         cornerRadius = config.cornerRadius
+        self.masksToBounds = false
+
+        // outer shadow for elevation
+        self.shadowColor = config.shadowColor.cgColor
+        self.shadowOpacity = config.shadowOpacity
+        self.shadowRadius = config.shadowRadius
+        self.shadowOffset = config.shadowOffset
     }
 
     private func setupSublayers() {
+        
         // highlight
         highlightLayer.name = "highlight"
         highlightLayer.colors = [
@@ -111,5 +127,50 @@ class KBBaseKeyLayer: CALayer {
             width: bounds.width,
             height: 1.0 / scale
         )
+    }
+    
+    // 按键按下动画
+    public func animateKeyPressDown() {
+        // immediate transform with UIView animation for spring-friendly behavior on release
+        UIView.animate(withDuration: 0.06, delay: 0, options: [.beginFromCurrentState], animations: {
+//            layer.setAffineTransform(CGAffineTransform(scaleX: 0.96, y: 0.96))
+            self.shadowOffset = CGSize(width: 0, height: 1)
+            self.shadowRadius = 3
+            self.backgroundColor = UIColor.lightGray.cgColor
+            self.shadowOpacity = 0.22
+        })
+
+        // intensify highlight via opacity change
+        if let grad = self.sublayers?.first(where: { $0.name == "highlight" }) as? CAGradientLayer {
+            let anim = CABasicAnimation(keyPath: "opacity")
+            anim.fromValue = grad.opacity
+            anim.toValue = 1.0
+            anim.duration = 0.12
+            grad.opacity = 1.0
+            grad.add(anim, forKey: "highlightIn")
+        }
+    }
+    
+    // 按键弹起动画
+    public func animatePressUp(completion: (() -> Void)? = nil) {
+
+        UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 8, options: [.allowUserInteraction], animations: {
+//            layer.setAffineTransform(.identity)
+            self.shadowOffset = CGSize(width: 0, height: 3)
+            self.shadowRadius = 6
+            self.backgroundColor = UIColor(white: 0.98, alpha: 1).cgColor
+            self.shadowOpacity = 0.18
+        }, completion: { _ in
+            // restore highlight
+            if let grad = self.sublayers?.first(where: { $0.name == "highlight" }) as? CAGradientLayer {
+                let anim = CABasicAnimation(keyPath: "opacity")
+                anim.fromValue = grad.opacity
+                anim.toValue = 0.9
+                anim.duration = 0.12
+                grad.opacity = 0.9
+                grad.add(anim, forKey: "highlightOut")
+            }
+            completion?()
+        })
     }
 }

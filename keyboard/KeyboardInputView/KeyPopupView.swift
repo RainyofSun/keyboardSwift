@@ -19,10 +19,9 @@ public class KeyPopupView: UIView {
     }
 
     public var cornerRadius: CGFloat = 10
-    public var arrowHeight: CGFloat = 10
-    public var arrowWidth: CGFloat = 20
     public var contentInset: UIEdgeInsets = .init(top: 8, left: 8, bottom: 8, right: 8)
     public var itemSpacing: CGFloat = 8
+    public var neckSpacing: CGFloat = 8 // 脖子的高度
     public var font: UIFont = .systemFont(ofSize: 20)
     
     private var itemFrames: [CGRect] = []   // 每个候选的绘制区域
@@ -30,6 +29,11 @@ public class KeyPopupView: UIView {
     private var _t_rect: CGRect = .zero
     // 弹窗键帽与键盘键帽的高度比
     private var _height_scale: CGFloat = 1.0
+    private let shapeLayer = CAShapeLayer()
+    private let highlightLayer = CAShapeLayer()
+    private let highlightMaskLayer = CAShapeLayer()
+    private let highlightInset = UIEdgeInsets(top: 4, left: 6, bottom: 4, right: 6) //高亮内缩参数
+    private var dragOffsetX: CGFloat = 0   // 相对 keyRect.midX
     
     public init(candidates: [String], keyPosition position: KeyPosition) {
         self._key_position = position
@@ -38,43 +42,87 @@ public class KeyPopupView: UIView {
         backgroundColor = .clear
         isOpaque = false
         
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.25
-        layer.shadowRadius = 8
-        layer.shadowOffset = CGSize(width: 0, height: 4)
+        // 异形 layer
+        shapeLayer.fillColor = UIColor.systemBackground.cgColor
+        shapeLayer.shadowColor = UIColor.black.cgColor
+        shapeLayer.shadowOpacity = 0.25
+        shapeLayer.shadowRadius = 8
+        shapeLayer.shadowOffset = CGSize(width: 0, height: 4)
+
+        layer.addSublayer(shapeLayer)
+        
+        // 高亮 layer
+        highlightLayer.fillColor = UIColor.systemGray4.cgColor
+        highlightLayer.opacity = 0
+        layer.addSublayer(highlightLayer)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - Layout popup position above/below key
     public func layout(pointingTo target: CGRect, in parent: UIView) {
-        // TODO 转换坐标
-        self._t_rect = target
+
+        // 1️⃣ popup frame（仍然基于 parent / keyRect）
         let totalWidth = calculateTotalWidth()
-        let popupHeight: CGFloat = target.height * _height_scale + contentInset.top + contentInset.bottom
+        // 高度 = 按键高度 + 脖子高度 + 可选词键帽高度 + 可选词距离顶部space + 可选词距离底部space
+        let popupHeight: CGFloat = target.height + target.height * _height_scale
+            + contentInset.top + contentInset.bottom + neckSpacing
 
         var x = target.midX - totalWidth / 2
         x = max(8, min(x, parent.bounds.width - totalWidth - 8))
 
-        var y = target.minY - popupHeight - 6
-        var placedAbove = true
-        if y < parent.safeAreaInsets.top + 4 {
-            y = target.maxY + 6
-            placedAbove = false
-        }
+        let y = target.maxY - popupHeight
 
         frame = CGRect(x: x, y: y, width: totalWidth, height: popupHeight)
-        setNeedsDisplay()
 
-        let arrowCenterX = min(max(target.midX - frame.minX, arrowWidth/2 + 6),
-                               frame.width - arrowWidth/2 - 6)
+        // 2️⃣ 🔥 键帽 rect → popup 坐标系
+        _t_rect = parent.convert(target, to: self)
 
-        layer.setValue(arrowCenterX, forKey: "arrowCenterX")
-        layer.setValue(placedAbove, forKey: "placedAbove")
+        // 3️⃣ 更新 path（核心）
+        updateShapePath()
 
+        // 4️⃣ 子项布局
         layoutItemFrames()
     }
 
+    private func updateShapePath(animated: Bool = false) {
+        let path = _key_position.continuousPopupPath(
+            baseRect: bounds,
+            keyRect: _t_rect,
+            keyHeight: self._t_rect.height * _height_scale,
+            headOffsetX: dragOffsetX
+        )
+
+        if animated {
+            animatePath(to: path)
+        } else {
+            shapeLayer.path = path.cgPath
+            shapeLayer.shadowPath = path.cgPath
+            highlightMaskLayer.path = shapeLayer.path
+            highlightLayer.mask = highlightMaskLayer
+        }
+    }
+    
+    private func animatePath(
+        to newPath: UIBezierPath,
+        duration: CFTimeInterval = 0.18,
+        timing: CAMediaTimingFunction = .init(name: .easeOut)
+    ) {
+
+        let animation = CABasicAnimation(keyPath: "path")
+        animation.fromValue = shapeLayer.path
+        animation.toValue = newPath.cgPath
+        animation.duration = duration
+        animation.timingFunction = timing
+        animation.fillMode = .forwards
+        animation.isRemovedOnCompletion = false
+
+        shapeLayer.add(animation, forKey: "path")
+
+        shapeLayer.path = newPath.cgPath
+        shapeLayer.shadowPath = newPath.cgPath
+    }
+    
     // MARK: - Calculate candidate widths
     private func calculateTotalWidth() -> CGFloat {
         let textWidths = candidates.map { ($0 as NSString).size(withAttributes: [.font: font]).width }
@@ -87,7 +135,7 @@ public class KeyPopupView: UIView {
         itemFrames.removeAll()
 
         var x: CGFloat = contentInset.left
-        let centerY = (bounds.height - arrowHeight) / 2
+        let centerY = bounds.height / 2
 
         for c in candidates {
             let size = (c as NSString).size(withAttributes: [.font: font])
@@ -102,47 +150,20 @@ public class KeyPopupView: UIView {
         }
     }
 
-    // MARK: - Drawing bubble + arrow + text
+    // MARK: - Drawing text
     public override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         ctx.clear(rect)
 
-        let placedAbove = (layer.value(forKey: "placedAbove") as? Bool) ?? true
-        let arrowCenterX = (layer.value(forKey: "arrowCenterX") as? CGFloat) ?? rect.width/2
-
-        let bubbleRect = CGRect(x: 0, y: placedAbove ? 0 : arrowHeight,
-                                width: rect.width,
-                                height: rect.height - arrowHeight)
-
-//        let path = UIBezierPath(roundedRect: bubbleRect, cornerRadius: cornerRadius)
-
-//        // arrow shape
-//        let arrowPath = UIBezierPath()
-//        if placedAbove {
-//            arrowPath.move(to: CGPoint(x: arrowCenterX - arrowWidth/2, y: bubbleRect.maxY))
-//            arrowPath.addLine(to: CGPoint(x: arrowCenterX, y: bubbleRect.maxY + arrowHeight))
-//            arrowPath.addLine(to: CGPoint(x: arrowCenterX + arrowWidth/2, y: bubbleRect.maxY))
-//        } else {
-//            arrowPath.move(to: CGPoint(x: arrowCenterX - arrowWidth/2, y: bubbleRect.minY))
-//            arrowPath.addLine(to: CGPoint(x: arrowCenterX, y: bubbleRect.minY - arrowHeight))
-//            arrowPath.addLine(to: CGPoint(x: arrowCenterX + arrowWidth/2, y: bubbleRect.minY))
-//        }
-//
-//        path.append(arrowPath)
-//
-//        UIColor.systemBackground.setFill()
-//        path.fill()
-
-        let path = self._key_position.path(baseRect: rect, keyRect: self._t_rect)
         // Draw highlight
-        if selectedIndex < itemFrames.count {
-            let selected = itemFrames[selectedIndex]
-            let highlightRect = selected.insetBy(dx: -6, dy: -4)
-            let highlightPath = UIBezierPath(roundedRect: highlightRect, cornerRadius: 6)
-            UIColor.systemGray4.setFill()
-            highlightPath.fill()
-        }
-
+//        if selectedIndex < itemFrames.count {
+//            let selected = itemFrames[selectedIndex]
+//            let highlightRect = selected.insetBy(dx: -6, dy: -4)
+//            let highlightPath = UIBezierPath(roundedRect: highlightRect, cornerRadius: 6)
+//            UIColor.systemGray4.setFill()
+//            highlightPath.fill()
+//        }
+        
         // Draw text
         for (i, c) in candidates.enumerated() {
             let frame = itemFrames[i]
@@ -153,7 +174,68 @@ public class KeyPopupView: UIView {
             (c as NSString).draw(in: frame, withAttributes: attrs)
         }
     }
+    
+    private func updateDragOffset(with localX: CGFloat) {
 
+        let keyMidX = _t_rect.midX
+        let rawOffset = localX - keyMidX
+
+        // 最大允许偏移（系统级）
+        let maxOffset: CGFloat = 24
+
+        dragOffsetX = max(-maxOffset, min(rawOffset, maxOffset))
+        // 边缘键的自动抑制(防抖)
+        if _key_position == .leftEdge {
+            dragOffsetX = max(0, dragOffsetX)
+        }
+        if _key_position == .rightEdge {
+            dragOffsetX = min(0, dragOffsetX)
+        }
+        
+        updateShapePath(animated: false)
+    }
+
+    private func highlightRect(for itemFrame: CGRect) -> CGRect {
+        
+        var rect = itemFrame.inset(by: highlightInset)
+
+        // 🔥 吸附到 popup 内部（关键）
+        let safeBounds = bounds.insetBy(dx: 4, dy: 4)
+        rect = rect.intersection(safeBounds)
+
+        return rect
+    }
+    
+    private func updateHighlight(animated: Bool) {
+
+        guard selectedIndex < itemFrames.count else { return }
+
+        let targetRect = highlightRect(for: itemFrames[selectedIndex])
+        let path = UIBezierPath(roundedRect: targetRect, cornerRadius: 6)
+
+        if animated {
+            animateHighlight(to: path)
+        } else {
+            highlightLayer.path = path.cgPath
+            highlightLayer.opacity = 1
+        }
+    }
+    
+    private func animateHighlight(to path: UIBezierPath) {
+
+        let anim = CABasicAnimation(keyPath: "path")
+        anim.fromValue = highlightLayer.path
+        anim.toValue = path.cgPath
+        anim.duration = 0.12
+        anim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        anim.fillMode = .forwards
+        anim.isRemovedOnCompletion = false
+
+        highlightLayer.add(anim, forKey: "highlightPath")
+        highlightLayer.path = path.cgPath
+        highlightLayer.opacity = 1
+    }
+    
     // MARK: - Selection update
     public func updateSelection(for pointInParent: CGPoint) {
         let local = convert(pointInParent, to: self)
@@ -161,6 +243,7 @@ public class KeyPopupView: UIView {
         for (i, frame) in itemFrames.enumerated() {
             if frame.contains(local) {
                 selectedIndex = i
+                updateHighlight(animated: true)
                 return
             }
         }
@@ -170,10 +253,36 @@ public class KeyPopupView: UIView {
         if let nearest = xs.enumerated().min(by: { abs($0.element - local.x) < abs($1.element - local.x) }) {
             selectedIndex = nearest.offset
         }
+        
+        // 🔥 新增：更新 path 跟随
+        updateDragOffset(with: local.x)
+        // 🔥 新增：更新 高亮 跟随
+        updateHighlight(animated: false)
     }
 
     public func commitSelection() -> String? {
         guard candidates.indices.contains(selectedIndex) else { return nil }
         return candidates[selectedIndex]
+    }
+    
+    // touchesEnded/Paned 调用
+    public func endTracking() {
+        dragOffsetX = 0
+        updateShapePath(animated: true)
+    }
+    
+    // popUp 弹出动画
+    public func animateAppear() {
+        transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+        alpha = 0
+
+        UIView.animate(
+            withDuration: 0.15,
+            delay: 0,
+            options: [.curveEaseOut]
+        ) {
+            self.transform = .identity
+            self.alpha = 1
+        }
     }
 }
