@@ -13,6 +13,7 @@ public enum KeyType {
     case shift
     case returnKey
     case space
+    case delete
     case special
 }
 

@@ -88,10 +88,15 @@ class KBKeyboardViewFull: UIView {
 
         for key in keysFlat {
             let id = key.keyId
-            let layer: CALayer
+            var layer: CALayer
+            let config = KBKeyLayerConfig.init(keyBackgroundColor: keyBackgroundColor, cornerRadius: cornerRadius)
             if let l = keyLayers[id] {
                 layer = l
             } else {
+//                if key.keyType == .delete {
+//                    layer = KBDeleteKeyLayer(config: config)
+//                }
+//                layer = KBCharacterKeyLayer(config: config)
                 layer = createKeyLayer()
                 keyLayers[id] = layer
                 self.layer.addSublayer(layer)
@@ -288,8 +293,8 @@ class KBKeyboardViewFull: UIView {
         // immediate transform with UIView animation for spring-friendly behavior on release
         UIView.animate(withDuration: 0.06, delay: 0, options: [.beginFromCurrentState], animations: {
 //            layer.setAffineTransform(CGAffineTransform(scaleX: 0.96, y: 0.96))
-//            layer.shadowOffset = CGSize(width: 0, height: 1)
-//            layer.shadowRadius = 3
+            layer.shadowOffset = CGSize(width: 0, height: 1)
+            layer.shadowRadius = 3
             layer.backgroundColor = UIColor.lightGray.cgColor
             layer.shadowOpacity = 0.22
         })
@@ -310,8 +315,8 @@ class KBKeyboardViewFull: UIView {
 
         UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 8, options: [.allowUserInteraction], animations: {
 //            layer.setAffineTransform(.identity)
-//            layer.shadowOffset = CGSize(width: 0, height: 3)
-//            layer.shadowRadius = 6
+            layer.shadowOffset = CGSize(width: 0, height: 3)
+            layer.shadowRadius = 6
             layer.backgroundColor = self.keyBackgroundColor.cgColor
             layer.shadowOpacity = 0.18
         }, completion: { _ in
@@ -341,6 +346,8 @@ class KBKeyboardViewFull: UIView {
             commitText("\n")
         case .shift:
             // leave to host to implement casing
+            break
+        case.delete:
             break
         case .special:
             // switching layouts (assume id == "numbers" or id == "123")
