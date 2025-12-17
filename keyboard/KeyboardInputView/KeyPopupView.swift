@@ -165,14 +165,14 @@ public class KeyPopupView: UIView {
 //        }
         
         // Draw text
-        for (i, c) in candidates.enumerated() {
-            let frame = itemFrames[i]
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: UIColor.label
-            ]
-            (c as NSString).draw(in: frame, withAttributes: attrs)
-        }
+//        for (i, c) in candidates.enumerated() {
+//            let frame = itemFrames[i]
+//            let attrs: [NSAttributedString.Key: Any] = [
+//                .font: font,
+//                .foregroundColor: UIColor.label
+//            ]
+//            (c as NSString).draw(in: frame, withAttributes: attrs)
+//        }
     }
     
     private func updateDragOffset(with localX: CGFloat) {

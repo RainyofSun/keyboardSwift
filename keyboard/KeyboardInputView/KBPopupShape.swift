@@ -27,7 +27,7 @@ struct PopupShapeConfig {
     /// 头部相对 key 左右外扩
     static let headExpand: CGFloat = 14
     /// 顶部大圆角
-    static let topRadius: CGFloat = 12
+    static let topRadius: CGFloat = 6
     /// 脖子到头部的垂直抬升
     static let verticalLift: CGFloat = 8
     /// ⭐ 脖子 → 头部「弱圆角」半径（Apple 核心）
@@ -90,18 +90,33 @@ extension KeyPosition {
         let bottomLeft  = CGPoint(x: keyRect.minX, y: bottomY)
         let bottomRight = CGPoint(x: keyRect.maxX, y: bottomY)
 
+        // 左下角圆弧起始点
         let bottomLeftIn  = CGPoint(x: keyRect.minX + cfg.bottomRadius, y: bottomY)
+        // 右下角圆弧起始点
         let bottomRightIn = CGPoint(x: keyRect.maxX - cfg.bottomRadius, y: bottomY)
 
+        // 拐角1的起始点
         let neckTopY = keyRect.minY - cfg.verticalLift
+        // 拐角1的结束点
         let filletY  = neckTopY - cfg.neckFilletRadius
-
+            
+        // 拐角2的起始点
+        let neckTop1Y = filletY
+        // 拐角2的结束点
+        let fillet1Y  = neckTop1Y - cfg.neckFilletRadius
+        
+        // 中心点
         let baseCenterX = keyRect.midX + headOffsetX
+        // 帽子的左侧X坐标
         let headLeftX  = max(0, baseCenterX - keyRect.width / 2 - expandL)
+        // 帽子的右侧X坐标
         let headRightX = min(baseRect.width, baseCenterX + keyRect.width / 2 + expandR)
 
-        let headTopY = max(0, neckTopY - cfg.topRadius)
-
+        // 帽子的顶部起始点
+        let headTopY = max(0, filletY - keyHeight - cfg.topRadius)
+        // 帽子的顶部结束点
+        let headFilletY = 0.0
+        
         // MARK: - Path
         let path = UIBezierPath()
 
@@ -115,45 +130,57 @@ extension KeyPosition {
         )
 
         // ===== 左侧：脖子直上 =====
-        path.addLine(to: CGPoint(x: keyRect.minX, y: filletY))
+        path.addLine(to: CGPoint(x: keyRect.minX, y: neckTopY))
 
-        // ===== 左侧：脖子 → 头部（弱圆角）=====
+        // ===== 左侧：脖子 → 头部底部（弱圆角）=====
         path.addQuadCurve(
-            to: CGPoint(x: headLeftX, y: neckTopY),
-            controlPoint: CGPoint(x: keyRect.minX, y: neckTopY)
+            to: CGPoint(x: headLeftX, y: filletY),
+            controlPoint: CGPoint(x: keyRect.minX, y: filletY)
         )
 
+        // ===== 左侧：头部底部平线 =====
+        path.addLine(to: CGPoint(x: cfg.neckFilletRadius, y: neckTop1Y))
+        
+        // ===== 左侧：头部底部 -> 头部左侧 (弱圆角) =====
+        path.addQuadCurve(to: CGPoint(x: 0, y: fillet1Y), controlPoint: CGPoint(x: 0, y: neckTop1Y))
+        
         // ===== 左侧：头部直上 =====
         path.addLine(
-            to: CGPoint(x: headLeftX, y: headTopY + cfg.topRadius)
+            to: CGPoint(x: headLeftX, y: headTopY)
         )
 
         // ===== 左上角 =====
         path.addQuadCurve(
-            to: CGPoint(x: headLeftX + cfg.topRadius, y: headTopY),
-            controlPoint: CGPoint(x: headLeftX, y: headTopY)
+            to: CGPoint(x: cfg.topRadius, y: headFilletY),
+            controlPoint: CGPoint.zero
         )
 
         // ===== 顶边 =====
         path.addLine(
-            to: CGPoint(x: headRightX - cfg.topRadius, y: headTopY)
+            to: CGPoint(x: headRightX - cfg.topRadius, y: headFilletY)
         )
 
         // ===== 右上角 =====
         path.addQuadCurve(
-            to: CGPoint(x: headRightX, y: headTopY + cfg.topRadius),
-            controlPoint: CGPoint(x: headRightX, y: headTopY)
+            to: CGPoint(x: headRightX, y: headTopY),
+            controlPoint: CGPoint(x: headRightX, y: 0)
         )
 
         // ===== 右侧：头部直下 =====
         path.addLine(
-            to: CGPoint(x: headRightX, y: neckTopY)
+            to: CGPoint(x: headRightX, y: fillet1Y)
         )
+            
+        // ===== 右侧：头部右侧 -> 头部底部 (弱圆角) =====
+        path.addQuadCurve(to: CGPoint(x: headRightX - cfg.neckFilletRadius, y: neckTop1Y), controlPoint: CGPoint(x: headRightX, y: neckTop1Y))
+        
+        // ===== 右侧：头部底部平线 =====
+        path.addLine(to: CGPoint(x: keyRect.maxX + cfg.neckFilletRadius, y: neckTop1Y))
 
-        // ===== 右侧：头部 → 脖子（弱圆角）=====
+        // ===== 右侧：头部底部 → 脖子（弱圆角）=====
         path.addQuadCurve(
-            to: CGPoint(x: keyRect.maxX, y: filletY),
-            controlPoint: CGPoint(x: keyRect.maxX, y: neckTopY)
+            to: CGPoint(x: keyRect.maxX, y: neckTopY),
+            controlPoint: CGPoint(x: keyRect.maxX, y: neckTop1Y)
         )
 
         // ===== 右侧：脖子直下 =====
