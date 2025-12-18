@@ -54,15 +54,15 @@ extension KeyPosition {
     }
 
     func continuousPopupPath(
-            baseRect: CGRect,
-            keyRect: CGRect,
-            keyHeight: CGFloat,
-            headOffsetX: CGFloat = 0
-        ) -> UIBezierPath {
+        baseRect: CGRect,
+        keyRect: CGRect,
+        keyHeight: CGFloat,
+        headOffsetX: CGFloat = 0
+    ) -> UIBezierPath {
 
         let cfg = PopupShapeConfig.self
 
-        // MARK: - 头部扩展
+        // MARK: - 头部左右扩展
         let expandL: CGFloat
         let expandR: CGFloat
 
@@ -84,114 +84,92 @@ extension KeyPosition {
             expandR = 0
         }
 
-        // MARK: - 关键几何点
-        let bottomY = keyRect.maxY
+        // MARK: - 关键 Y
+        let bottomY   = keyRect.maxY
+        let neckTopY  = keyRect.minY - cfg.verticalLift
+        let filletY   = neckTopY - cfg.neckFilletRadius
 
-        let bottomLeft  = CGPoint(x: keyRect.minX, y: bottomY)
-        let bottomRight = CGPoint(x: keyRect.maxX, y: bottomY)
-
-        // 左下角圆弧起始点
+        // MARK: - 底部圆角
         let bottomLeftIn  = CGPoint(x: keyRect.minX + cfg.bottomRadius, y: bottomY)
-        // 右下角圆弧起始点
         let bottomRightIn = CGPoint(x: keyRect.maxX - cfg.bottomRadius, y: bottomY)
 
-        // 拐角1的起始点
-        let neckTopY = keyRect.minY - cfg.verticalLift
-        // 拐角1的结束点
-        let filletY  = neckTopY - cfg.neckFilletRadius
-            
-        // 拐角2的起始点
-        let neckTop1Y = filletY
-        // 拐角2的结束点
-        let fillet1Y  = neckTop1Y - cfg.neckFilletRadius
-        
-        // 中心点
+        // MARK: - 头部 X
         let baseCenterX = keyRect.midX + headOffsetX
-        // 帽子的左侧X坐标
         let headLeftX  = max(0, baseCenterX - keyRect.width / 2 - expandL)
-        // 帽子的右侧X坐标
         let headRightX = min(baseRect.width, baseCenterX + keyRect.width / 2 + expandR)
 
-        // 帽子的顶部起始点
-        let headTopY = max(0, filletY - keyHeight - cfg.topRadius)
-        // 帽子的顶部结束点
-        let headFilletY = 0.0
-        
+        // MARK: - 头部顶部
+        let headTopY = max(0, neckTopY - keyHeight - cfg.topRadius)
+
         // MARK: - Path
         let path = UIBezierPath()
 
-        // ===== 起点：左下圆角起点 =====
+        // ===== 左下圆角起点 =====
         path.move(to: bottomLeftIn)
 
         // ===== 左下圆角 =====
         path.addQuadCurve(
             to: CGPoint(x: keyRect.minX, y: bottomY - cfg.bottomRadius),
-            controlPoint: bottomLeft
+            controlPoint: CGPoint(x: keyRect.minX, y: bottomY)
         )
 
-        // ===== 左侧：脖子直上 =====
-        path.addLine(to: CGPoint(x: keyRect.minX, y: neckTopY))
+        // ===== 左侧脖子直上 =====
+        path.addLine(to: CGPoint(x: keyRect.minX, y: filletY))
 
-        // ===== 左侧：脖子 → 头部底部（弱圆角）=====
-        path.addQuadCurve(
-            to: CGPoint(x: headLeftX, y: filletY),
-            controlPoint: CGPoint(x: keyRect.minX, y: filletY)
+        // ===== 左侧：脖子 → 头部底部（三阶贝塞尔）=====
+        path.addCurve(
+            to: CGPoint(x: headLeftX, y: neckTopY),
+            controlPoint1: CGPoint(
+                x: keyRect.minX,
+                y: neckTopY - cfg.neckFilletRadius * 0.3
+            ),
+            controlPoint2: CGPoint(
+                x: headLeftX,
+                y: neckTopY - cfg.neckFilletRadius
+            )
         )
 
-        // ===== 左侧：头部底部平线 =====
-        path.addLine(to: CGPoint(x: cfg.neckFilletRadius, y: neckTop1Y))
-        
-        // ===== 左侧：头部底部 -> 头部左侧 (弱圆角) =====
-        path.addQuadCurve(to: CGPoint(x: 0, y: fillet1Y), controlPoint: CGPoint(x: 0, y: neckTop1Y))
-        
-        // ===== 左侧：头部直上 =====
-        path.addLine(
-            to: CGPoint(x: headLeftX, y: headTopY)
-        )
+        // ===== 左侧头部直上 =====
+        path.addLine(to: CGPoint(x: headLeftX, y: headTopY + cfg.topRadius))
 
         // ===== 左上角 =====
         path.addQuadCurve(
-            to: CGPoint(x: cfg.topRadius, y: headFilletY),
-            controlPoint: CGPoint.zero
+            to: CGPoint(x: headLeftX + cfg.topRadius, y: headTopY),
+            controlPoint: CGPoint(x: headLeftX, y: headTopY)
         )
 
         // ===== 顶边 =====
-        path.addLine(
-            to: CGPoint(x: headRightX - cfg.topRadius, y: headFilletY)
-        )
+        path.addLine(to: CGPoint(x: headRightX - cfg.topRadius, y: headTopY))
 
         // ===== 右上角 =====
         path.addQuadCurve(
-            to: CGPoint(x: headRightX, y: headTopY),
-            controlPoint: CGPoint(x: headRightX, y: 0)
+            to: CGPoint(x: headRightX, y: headTopY + cfg.topRadius),
+            controlPoint: CGPoint(x: headRightX, y: headTopY)
         )
 
-        // ===== 右侧：头部直下 =====
-        path.addLine(
-            to: CGPoint(x: headRightX, y: fillet1Y)
-        )
-            
-        // ===== 右侧：头部右侧 -> 头部底部 (弱圆角) =====
-        path.addQuadCurve(to: CGPoint(x: headRightX - cfg.neckFilletRadius, y: neckTop1Y), controlPoint: CGPoint(x: headRightX, y: neckTop1Y))
-        
-        // ===== 右侧：头部底部平线 =====
-        path.addLine(to: CGPoint(x: keyRect.maxX + cfg.neckFilletRadius, y: neckTop1Y))
+        // ===== 右侧头部直下 =====
+        path.addLine(to: CGPoint(x: headRightX, y: neckTopY))
 
-        // ===== 右侧：头部底部 → 脖子（弱圆角）=====
-        path.addQuadCurve(
-            to: CGPoint(x: keyRect.maxX, y: neckTopY),
-            controlPoint: CGPoint(x: keyRect.maxX, y: neckTop1Y)
+        // ===== 右侧：头部底部 → 脖子（三阶贝塞尔）=====
+        path.addCurve(
+            to: CGPoint(x: keyRect.maxX, y: filletY),
+            controlPoint1: CGPoint(
+                x: headRightX,
+                y: neckTopY - cfg.neckFilletRadius
+            ),
+            controlPoint2: CGPoint(
+                x: keyRect.maxX,
+                y: neckTopY - cfg.neckFilletRadius * 0.3
+            )
         )
 
-        // ===== 右侧：脖子直下 =====
-        path.addLine(
-            to: CGPoint(x: keyRect.maxX, y: bottomY - cfg.bottomRadius)
-        )
+        // ===== 右侧脖子直下 =====
+        path.addLine(to: CGPoint(x: keyRect.maxX, y: bottomY - cfg.bottomRadius))
 
         // ===== 右下圆角 =====
         path.addQuadCurve(
             to: bottomRightIn,
-            controlPoint: bottomRight
+            controlPoint: CGPoint(x: keyRect.maxX, y: bottomY)
         )
 
         // ===== 底边 =====
@@ -200,6 +178,153 @@ extension KeyPosition {
         path.close()
         return path
     }
+//    func continuousPopupPath(
+//            baseRect: CGRect,
+//            keyRect: CGRect,
+//            keyHeight: CGFloat,
+//            headOffsetX: CGFloat = 0
+//        ) -> UIBezierPath {
+//
+//        let cfg = PopupShapeConfig.self
+//
+//        // MARK: - 头部扩展
+//        let expandL: CGFloat
+//        let expandR: CGFloat
+//
+//        switch self {
+//        case .center:
+//            expandL = cfg.headExpand
+//            expandR = cfg.headExpand
+//        case .left:
+//            expandL = cfg.headExpand * 0.6
+//            expandR = cfg.headExpand
+//        case .right:
+//            expandL = cfg.headExpand
+//            expandR = cfg.headExpand * 0.6
+//        case .leftEdge:
+//            expandL = 0
+//            expandR = cfg.headExpand
+//        case .rightEdge:
+//            expandL = cfg.headExpand
+//            expandR = 0
+//        }
+//
+//        // MARK: - 关键几何点
+//        let bottomY = keyRect.maxY
+//
+//        let bottomLeft  = CGPoint(x: keyRect.minX, y: bottomY)
+//        let bottomRight = CGPoint(x: keyRect.maxX, y: bottomY)
+//
+//        // 左下角圆弧起始点
+//        let bottomLeftIn  = CGPoint(x: keyRect.minX + cfg.bottomRadius, y: bottomY)
+//        // 右下角圆弧起始点
+//        let bottomRightIn = CGPoint(x: keyRect.maxX - cfg.bottomRadius, y: bottomY)
+//
+//        // 拐角1的起始点
+//        let neckTopY = keyRect.minY - cfg.verticalLift
+//        // 拐角1的结束点
+//        let filletY  = neckTopY - cfg.neckFilletRadius
+//            
+//        // 拐角2的起始点
+//        let neckTop1Y = filletY
+//        // 拐角2的结束点
+//        let fillet1Y  = neckTop1Y - cfg.neckFilletRadius
+//        
+//        // 中心点
+//        let baseCenterX = keyRect.midX + headOffsetX
+//        // 帽子的左侧X坐标
+//        let headLeftX  = max(0, baseCenterX - keyRect.width / 2 - expandL)
+//        // 帽子的右侧X坐标
+//        let headRightX = min(baseRect.width, baseCenterX + keyRect.width / 2 + expandR)
+//
+//        // 帽子的顶部起始点
+//        let headTopY = max(0, filletY - keyHeight - cfg.topRadius)
+//        // 帽子的顶部结束点
+//        let headFilletY = 0.0
+//        
+//        // MARK: - Path
+//        let path = UIBezierPath()
+//
+//        // ===== 起点：左下圆角起点 =====
+//        path.move(to: bottomLeftIn)
+//
+//        // ===== 左下圆角 =====
+//        path.addQuadCurve(
+//            to: CGPoint(x: keyRect.minX, y: bottomY - cfg.bottomRadius),
+//            controlPoint: bottomLeft
+//        )
+//
+//        // ===== 左侧：脖子直上 =====
+//        path.addLine(to: CGPoint(x: keyRect.minX, y: neckTopY))
+//
+//        // ===== 左侧：脖子 → 头部底部（弱圆角）=====
+//        path.addQuadCurve(
+//            to: CGPoint(x: headLeftX, y: filletY),
+//            controlPoint: CGPoint(x: keyRect.minX, y: filletY)
+//        )
+//
+//        // ===== 左侧：头部底部平线 =====
+//        path.addLine(to: CGPoint(x: cfg.neckFilletRadius, y: neckTop1Y))
+//        
+//        // ===== 左侧：头部底部 -> 头部左侧 (弱圆角) =====
+//        path.addQuadCurve(to: CGPoint(x: 0, y: fillet1Y), controlPoint: CGPoint(x: 0, y: neckTop1Y))
+//        
+//        // ===== 左侧：头部直上 =====
+//        path.addLine(
+//            to: CGPoint(x: headLeftX, y: headTopY)
+//        )
+//
+//        // ===== 左上角 =====
+//        path.addQuadCurve(
+//            to: CGPoint(x: cfg.topRadius, y: headFilletY),
+//            controlPoint: CGPoint.zero
+//        )
+//
+//        // ===== 顶边 =====
+//        path.addLine(
+//            to: CGPoint(x: headRightX - cfg.topRadius, y: headFilletY)
+//        )
+//
+//        // ===== 右上角 =====
+//        path.addQuadCurve(
+//            to: CGPoint(x: headRightX, y: headTopY),
+//            controlPoint: CGPoint(x: headRightX, y: 0)
+//        )
+//
+//        // ===== 右侧：头部直下 =====
+//        path.addLine(
+//            to: CGPoint(x: headRightX, y: fillet1Y)
+//        )
+//            
+//        // ===== 右侧：头部右侧 -> 头部底部 (弱圆角) =====
+//        path.addQuadCurve(to: CGPoint(x: headRightX - cfg.neckFilletRadius, y: neckTop1Y), controlPoint: CGPoint(x: headRightX, y: neckTop1Y))
+//        
+//        // ===== 右侧：头部底部平线 =====
+//        path.addLine(to: CGPoint(x: keyRect.maxX + cfg.neckFilletRadius, y: neckTop1Y))
+//
+//        // ===== 右侧：头部底部 → 脖子（弱圆角）=====
+//        path.addQuadCurve(
+//            to: CGPoint(x: keyRect.maxX, y: neckTopY),
+//            controlPoint: CGPoint(x: keyRect.maxX, y: neckTop1Y)
+//        )
+//
+//        // ===== 右侧：脖子直下 =====
+//        path.addLine(
+//            to: CGPoint(x: keyRect.maxX, y: bottomY - cfg.bottomRadius)
+//        )
+//
+//        // ===== 右下圆角 =====
+//        path.addQuadCurve(
+//            to: bottomRightIn,
+//            controlPoint: bottomRight
+//        )
+//
+//        // ===== 底边 =====
+//        path.addLine(to: bottomLeftIn)
+//
+//        path.close()
+//        return path
+//    }
     
     private func drawCenterPopPath(baseRect: CGRect, keyRect: CGRect, corner: CGFloat = 4) -> UIBezierPath {
         
