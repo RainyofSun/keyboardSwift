@@ -6,7 +6,7 @@
 //
 
 import UIKit
-
+// TODO 候选词绘制
 public class KeyPopupView: UIView {
 
     open var currentSelection: String {
@@ -86,21 +86,26 @@ public class KeyPopupView: UIView {
     }
 
     private func updateShapePath(animated: Bool = false) {
-        let path = _key_position.continuousPopupPath(
-            baseRect: bounds,
-            keyRect: _t_rect,
-            keyHeight: self._t_rect.height * _height_scale,
-            headOffsetX: dragOffsetX
-        )
+//        let path = _key_position.continuousPopupPath(
+//            baseRect: bounds,
+//            keyRect: _t_rect,
+//            keyHeight: self._t_rect.height * _height_scale,
+//            headOffsetX: dragOffsetX
+//        )
+        
+//        let path = _key_position.buildPopupPath(
+//            baseRect: bounds,
+//            keyRect: _t_rect,
+//        )
 
-        if animated {
-            animatePath(to: path)
-        } else {
-            shapeLayer.path = path.cgPath
-            shapeLayer.shadowPath = path.cgPath
-            highlightMaskLayer.path = shapeLayer.path
-            highlightLayer.mask = highlightMaskLayer
-        }
+//        if animated {
+//            animatePath(to: path)
+//        } else {
+//            shapeLayer.path = path.cgPath
+//            shapeLayer.shadowPath = path.cgPath
+//            highlightMaskLayer.path = shapeLayer.path
+//            highlightLayer.mask = highlightMaskLayer
+//        }
     }
     
     private func animatePath(
@@ -148,31 +153,34 @@ public class KeyPopupView: UIView {
             itemFrames.append(rect)
             x += size.width + itemSpacing
         }
+        
+        /*
+         let layouts = layoutCandidates(
+             items: candidates,
+             measurer: measurer,
+             headRect: headRect,
+             position: position,
+             itemSpacing: 8,
+             horizontalPadding: 12,
+             verticalCenterY: headRect.midY
+         )
+         */
     }
 
     // MARK: - Drawing text
     public override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         ctx.clear(rect)
-
-        // Draw highlight
-//        if selectedIndex < itemFrames.count {
-//            let selected = itemFrames[selectedIndex]
-//            let highlightRect = selected.insetBy(dx: -6, dy: -4)
-//            let highlightPath = UIBezierPath(roundedRect: highlightRect, cornerRadius: 6)
-//            UIColor.systemGray4.setFill()
-//            highlightPath.fill()
-//        }
         
         // Draw text
-//        for (i, c) in candidates.enumerated() {
-//            let frame = itemFrames[i]
-//            let attrs: [NSAttributedString.Key: Any] = [
-//                .font: font,
-//                .foregroundColor: UIColor.label
-//            ]
-//            (c as NSString).draw(in: frame, withAttributes: attrs)
-//        }
+        for (i, c) in candidates.enumerated() {
+            let frame = itemFrames[i]
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: UIColor.label
+            ]
+            (c as NSString).draw(in: frame, withAttributes: attrs)
+        }
     }
     
     private func updateDragOffset(with localX: CGFloat) {
@@ -283,6 +291,86 @@ public class KeyPopupView: UIView {
         ) {
             self.transform = .identity
             self.alpha = 1
+        }
+    }
+    
+    // 候选词布局 ------
+    func layoutCandidates(
+        items: [CandidateItem],
+        measurer: KBCandidateWidthMeasurer,
+        headRect: CGRect,
+        position: KeyPosition,
+        itemSpacing: CGFloat,
+        horizontalPadding: CGFloat,
+        verticalCenterY: CGFloat
+    ) -> [CandidateLayoutItem] {
+
+        guard !items.isEmpty else { return [] }
+
+        // 1️⃣ 算总宽度
+        let widths = items.map { measurer.width(for: $0.text) }
+        let contentWidth =
+            widths.reduce(0, +)
+            + CGFloat(items.count - 1) * itemSpacing
+
+        // 2️⃣ 起始 X
+        var x = contentStartX(
+            headRect: headRect,
+            contentWidth: contentWidth,
+            position: position,
+            horizontalPadding: horizontalPadding
+        )
+
+        // 3️⃣ 逐个布局
+        var result: [CandidateLayoutItem] = []
+
+        for (item, width) in zip(items, widths) {
+            let frame = CGRect(
+                x: x,
+                y: verticalCenterY - 14,   // 字体高度一半，建议测
+                width: width,
+                height: 28
+            )
+
+            result.append(
+                CandidateLayoutItem(text: item.text, frame: frame)
+            )
+
+            x += width + itemSpacing
+        }
+
+        return result
+    }
+    
+    func contentStartX(
+        headRect: CGRect,
+        contentWidth: CGFloat,
+        position: KeyPosition,
+        horizontalPadding: CGFloat
+    ) -> CGFloat {
+
+        switch position {
+
+        case .center:
+            return headRect.midX - contentWidth / 2
+
+        case .left:
+            return max(
+                headRect.minX + horizontalPadding,
+                headRect.midX - contentWidth * 0.6
+            )
+
+        case .right:
+            return min(
+                headRect.maxX - horizontalPadding - contentWidth,
+                headRect.midX - contentWidth * 0.4
+            )
+
+        case .leftEdge:
+            return headRect.minX + horizontalPadding
+
+        case .rightEdge:
+            return headRect.maxX - horizontalPadding - contentWidth
         }
     }
 }

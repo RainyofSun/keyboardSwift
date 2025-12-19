@@ -63,3 +63,14 @@ struct KBKeyRow {
         self.customWidthMultipliers = customWidthMultipliers
     }
 }
+
+// 候选词模型
+struct CandidateItem {
+    let text: String
+}
+
+// 候选词布局模型
+struct CandidateLayoutItem {
+    let text: String
+    let frame: CGRect
+}
