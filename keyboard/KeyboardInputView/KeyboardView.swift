@@ -154,7 +154,7 @@ extension KeyboardView {
     
     private func triggerLongPress() {
         guard var key = activeKey else { return }
-        key.alternatives = ["1", "2"]
+        key.alternatives = [CandidateItem(text: "1"), CandidateItem(text: "2")]
         guard key.alternatives?.isEmpty == false else {
             return
         }

@@ -13,7 +13,6 @@ public enum KeyType {
     case shift
     case returnKey
     case space
-    case delete
     case special
 }
 
@@ -33,7 +32,7 @@ struct KBKey {
     /// 键的文字
     var keyLabel: String
     /// 长按候选
-    var alternatives: [String]?
+    var alternatives: [CandidateItem]?
     /// key类型
     var keyType: KeyType = .character
     /// key 的位置
@@ -43,7 +42,10 @@ struct KBKey {
         self.keyId = keyId
         self.frame = frame
         self.keyLabel = keyLabel
-        self.alternatives = alternatives
+        self.alternatives = []
+        alternatives?.forEach { (element: String) in
+            self.alternatives?.append(CandidateItem(text: element))
+        }
         self.keyType = keyType
         self.keyLocation = location
     }
@@ -62,6 +64,18 @@ struct KBKeyRow {
         self.indent = indent
         self.customWidthMultipliers = customWidthMultipliers
     }
+}
+
+struct KBSystemKeyColors {
+
+    static let character = UIColor(white: 0.98, alpha: 1.0)
+    static let function  = UIColor(white: 0.86, alpha: 1.0)
+
+    static let characterPressed = UIColor(white: 0.75, alpha: 1.0)
+    static let functionPressed  = UIColor(white: 0.70, alpha: 1.0)
+
+    static let characterDark = UIColor(white: 0.18, alpha: 1.0)
+    static let functionDark  = UIColor(white: 0.28, alpha: 1.0)
 }
 
 // 候选词模型

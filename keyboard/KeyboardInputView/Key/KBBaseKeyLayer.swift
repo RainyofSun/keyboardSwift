@@ -8,18 +8,17 @@
 import UIKit
 
 struct KBKeyLayerConfig {
-    // 背景色
-    var keyBackgroundColor: UIColor = UIColor(white: 0.98, alpha: 1)
     // 圆角
     var cornerRadius: CGFloat = 8
     // 阴影颜色
     var shadowColor: UIColor = UIColor.black
-    // 阴影透明度
-    var shadowOpacity: Float = 0.18
-    // 阴影圆角
-    var shadowRadius: CGFloat = 6.0
-    // 阴影扩散
-    var shadowOffset: CGSize = CGSize(width: 0, height: 3)
+}
+
+struct KBKeyTextLayerConfig {
+    // 字体
+    var keyFont: UIFont = UIFont.systemFont(ofSize: 18)
+    // 字体颜色
+    var keyTextColor: UIColor = UIColor.label
 }
 
 class KBBaseKeyLayer: CALayer {
@@ -28,7 +27,19 @@ class KBBaseKeyLayer: CALayer {
     private let highlightLayer = CAGradientLayer()
     private let bottomShadeLayer = CAGradientLayer()
     private let separatorLayer = CALayer()
+    private var _textLayer: CATextLayer?
+    
+    var keyRole: KBKeyRole = .character
+    var visualState: KBKeyVisualState = .normal {
+        didSet { applyStyle(animated: true) }
+    }
 
+    var isDarkMode: Bool {
+        traitCollection?.userInterfaceStyle == .dark
+    }
+
+    weak var traitCollection: UITraitCollection?
+    
     // MARK: - Init
 
     override init() {
@@ -60,57 +71,7 @@ class KBBaseKeyLayer: CALayer {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // MARK: - Setup
-
-    private func commonInit() {
-        masksToBounds = false
-        contentsScale = UIScreen.main.scale
-
-        setupSublayers()
-    }
-
-    private func apply(config: KBKeyLayerConfig) {
-        backgroundColor = config.keyBackgroundColor.cgColor
-        cornerRadius = config.cornerRadius
-        self.masksToBounds = false
-
-        // outer shadow for elevation
-        self.shadowColor = config.shadowColor.cgColor
-        self.shadowOpacity = config.shadowOpacity
-        self.shadowRadius = config.shadowRadius
-        self.shadowOffset = config.shadowOffset
-    }
-
-    private func setupSublayers() {
-        
-        // highlight
-        highlightLayer.name = "highlight"
-        highlightLayer.colors = [
-            UIColor(white: 1.0, alpha: 0.18).cgColor,
-            UIColor(white: 1.0, alpha: 0.02).cgColor
-        ]
-        highlightLayer.startPoint = CGPoint(x: 0.5, y: 0)
-        highlightLayer.endPoint = CGPoint(x: 0.5, y: 1)
-        addSublayer(highlightLayer)
-
-        // bottom shade
-        bottomShadeLayer.name = "bottomShade"
-        bottomShadeLayer.colors = [
-            UIColor.clear.cgColor,
-            UIColor(white: 0, alpha: 0.06).cgColor
-        ]
-        bottomShadeLayer.startPoint = CGPoint(x: 0.5, y: 0)
-        bottomShadeLayer.endPoint = CGPoint(x: 0.5, y: 1)
-        addSublayer(bottomShadeLayer)
-
-        // separator
-        separatorLayer.name = "separator"
-        separatorLayer.backgroundColor = UIColor(white: 0.78, alpha: 1).cgColor
-        addSublayer(separatorLayer)
-    }
-
     // MARK: - Layout
-
     override func layoutSublayers() {
         super.layoutSublayers()
 
@@ -129,6 +90,7 @@ class KBBaseKeyLayer: CALayer {
         )
     }
     
+    // MARK: - Animation
     // 按键按下动画
     public func animateKeyPressDown() {
         // immediate transform with UIView animation for spring-friendly behavior on release
@@ -172,5 +134,127 @@ class KBBaseKeyLayer: CALayer {
             }
             completion?()
         })
+    }
+    
+    // MARK: - Key
+    // 创建 key 的文字
+    public func createTextLayerIfNeeded(textLayerConfig: KBKeyTextLayerConfig) {
+        guard self._textLayer == nil else {
+            return
+        }
+        
+        let t = CATextLayer()
+        t.contentsScale = UIScreen.main.scale
+        t.alignmentMode = .center
+        t.isWrapped = false
+        t.truncationMode = .end
+        t.foregroundColor = textLayerConfig.keyTextColor.cgColor
+        t.font = textLayerConfig.keyFont
+        t.fontSize = textLayerConfig.keyFont.pointSize
+        t.isWrapped = false
+        self.addSublayer(t)
+        self._textLayer = t
+    }
+    
+    public func updateTextLayer(key: KBKey, config: KBKeyTextLayerConfig) {
+        guard let t = _textLayer else { return }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        t.string = key.keyLabel as NSString
+
+        let size = (key.keyLabel as NSString).size(
+            withAttributes: [.font: config.keyFont]
+        )
+
+        t.frame = CGRect(
+            x: 0,
+            y: (bounds.height - size.height) * 0.5 - 1,
+            width: bounds.width,
+            height: size.height
+        )
+
+        CATransaction.commit()
+    }
+    
+    // 清理文字层
+    public func clearTextLayer() {
+        self._textLayer?.removeAllAnimations()
+        self._textLayer?.removeFromSuperlayer()
+    }
+    
+    // MARK: - Appearance
+    func applyStyle(animated: Bool) {
+
+        let bgColor = KBSystemKeyStyle.backgroundColor(
+            role: keyRole,
+            state: visualState,
+            darkMode: isDarkMode
+        ).cgColor
+
+        let changes = {
+            self.backgroundColor = bgColor
+            self.shadowOpacity = KBSystemKeyStyle.shadowOpacity(darkMode: self.isDarkMode)
+            self.shadowRadius = KBSystemKeyStyle.shadowRadius()
+            self.shadowOffset = KBSystemKeyStyle.shadowOffset()
+        }
+
+        if animated {
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.12)
+            changes()
+            CATransaction.commit()
+        } else {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            changes()
+            CATransaction.commit()
+        }
+    }
+}
+
+private extension KBBaseKeyLayer {
+    func commonInit() {
+        masksToBounds = false
+        contentsScale = UIScreen.main.scale
+
+        setupSublayers()
+    }
+
+    func apply(config: KBKeyLayerConfig) {
+        cornerRadius = config.cornerRadius
+        self.masksToBounds = false
+
+        // outer shadow for elevation
+        self.shadowColor = config.shadowColor.cgColor
+    }
+
+    func setupSublayers() {
+        
+        // highlight
+        highlightLayer.name = "highlight"
+        highlightLayer.colors = [
+            UIColor(white: 1.0, alpha: 0.18).cgColor,
+            UIColor(white: 1.0, alpha: 0.02).cgColor
+        ]
+        highlightLayer.startPoint = CGPoint(x: 0.5, y: 0)
+        highlightLayer.endPoint = CGPoint(x: 0.5, y: 1)
+        addSublayer(highlightLayer)
+
+        // bottom shade
+        bottomShadeLayer.name = "bottomShade"
+        bottomShadeLayer.colors = [
+            UIColor.clear.cgColor,
+            UIColor(white: 0, alpha: 0.06).cgColor
+        ]
+        bottomShadeLayer.startPoint = CGPoint(x: 0.5, y: 0)
+        bottomShadeLayer.endPoint = CGPoint(x: 0.5, y: 1)
+        addSublayer(bottomShadeLayer)
+
+        // separator
+        separatorLayer.name = "separator"
+        separatorLayer.backgroundColor = UIColor(white: 0.78, alpha: 1).cgColor
+        addSublayer(separatorLayer)
     }
 }

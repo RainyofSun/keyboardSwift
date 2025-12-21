@@ -26,15 +26,15 @@ class ViewController: UIViewController {
         self.textFiled.inputView = self.keyboardInputView
         self.keyboardInputView.keyboardDelegate = self
         
-        let popup = KeyPopupView(candidates: ["a", "b", "c"], keyPosition: KeyPosition.center)
-        popup.alpha = 0
-        popup.layer.opacity = 0
-
-        self.view.addSubview(popup)
-        popup.layout(pointingTo: self.capView.frame, in: self.view)
-        
-        popup.selectedIndex = 0
-        popup.animateAppear()
+//        let popup = KeyPopupView(candidates: ["a", "b", "c"], keyPosition: KeyPosition.center)
+//        popup.alpha = 0
+//        popup.layer.opacity = 0
+//
+//        self.view.addSubview(popup)
+//        popup.layout(pointingTo: self.capView.frame, in: self.view)
+//        
+//        popup.selectedIndex = 0
+//        popup.animateAppear()
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {

@@ -9,80 +9,123 @@ import UIKit
 import AudioToolbox
 
 class KBDeleteKeyLayer: KBBaseKeyLayer {
-    // MARK: - 属性
-    private var deleteLayer: CAShapeLayer!
-    private let deleteIconSize: CGFloat = 22
-    private let animationDuration: TimeInterval = 0.15
+
+    private let symbolLayer = CAShapeLayer()
+
     var isEnabled: Bool = true {
-        didSet {
-            updateAppearance()
-        }
+        didSet { updateAppearance() }
     }
-    
-    func setup() {
-        setupLayer()
+
+    override init(config: KBKeyLayerConfig) {
+        super.init(config: config)
+        setupIconLayer()
         updateAppearance()
     }
-    
-    private func setupLayer() {
-        // 删除图标层
-        deleteLayer = CAShapeLayer()
-        deleteLayer.frame = bounds
-        deleteLayer.fillColor = UIColor.clear.cgColor
-        deleteLayer.strokeColor = UIColor.black.cgColor
-        deleteLayer.lineWidth = 2
-        deleteLayer.lineCap = .round
-        deleteLayer.lineJoin = .round
-        
-        let deletePath = createDeleteIconPath()
-        deleteLayer.path = deletePath.cgPath
-        
-        self.addSublayer(deleteLayer)
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: - Layout
+
+    override func layoutSublayers() {
+        super.layoutSublayers()
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        symbolLayer.frame = bounds
+        symbolLayer.path = deleteIconPath(in: bounds).cgPath
+
+        CATransaction.commit()
     }
     
-    private func createDeleteIconPath() -> UIBezierPath {
+    override func applyStyle(animated: Bool) {
+        super.applyStyle(animated: animated)
+
+        let color = isDarkMode ? UIColor.white : UIColor.black
+        symbolLayer.strokeColor = color.cgColor
+        symbolLayer.fillColor = color.cgColor
+    }
+}
+
+private extension KBDeleteKeyLayer {
+    func setupIconLayer() {
+        symbolLayer.contentsScale = UIScreen.main.scale
+        symbolLayer.fillColor = UIColor.clear.cgColor
+        symbolLayer.strokeColor = UIColor.label.cgColor
+        symbolLayer.lineWidth = 1.8
+        symbolLayer.lineCap = .round
+        symbolLayer.lineJoin = .round
+
+        addSublayer(symbolLayer)
+    }
+    
+    func deleteIconPath(in rect: CGRect) -> UIBezierPath {
+        let w = rect.width
+        let h = rect.height
+
+        let center = CGPoint(x: w * 0.52, y: h * 0.5)
+
+        let arrowWidth = w * 0.36
+        let arrowHeight = h * 0.28
+        let cornerRadius = arrowHeight * 0.25
+
         let path = UIBezierPath()
-        
-        // 绘制删除图标（左箭头 + X）
-        let center = CGPoint(x: bounds.midX, y: bounds.midY)
-        let iconWidth = deleteIconSize
-        let iconHeight = deleteIconSize
-        
-        // 箭头部分
-        let arrowStart = CGPoint(x: center.x + iconWidth/3, y: center.y)
-        let arrowEnd = CGPoint(x: center.x - iconWidth/3, y: center.y)
-        let arrowControl = CGPoint(x: center.x - iconWidth/6, y: center.y - iconHeight/4)
-        
-        path.move(to: arrowStart)
-        path.addQuadCurve(to: arrowEnd, controlPoint: arrowControl)
-        
-        // X的左侧
-        let xLeftStart = CGPoint(x: center.x - iconWidth/4, y: center.y - iconHeight/6)
-        let xLeftEnd = CGPoint(x: center.x - iconWidth/2, y: center.y - iconHeight/3)
-        
-        path.move(to: xLeftStart)
-        path.addLine(to: xLeftEnd)
-        
-        // X的右侧
-        let xRightStart = CGPoint(x: center.x - iconWidth/4, y: center.y - iconHeight/6)
-        let xRightEnd = CGPoint(x: center.x, y: center.y - iconHeight/3)
-        
-        path.move(to: xRightStart)
-        path.addLine(to: xRightEnd)
-        
+
+        // 左箭头主体（胶囊形）
+        let arrowRect = CGRect(
+            x: center.x - arrowWidth * 0.5,
+            y: center.y - arrowHeight * 0.5,
+            width: arrowWidth,
+            height: arrowHeight
+        )
+
+        path.move(to: CGPoint(x: arrowRect.minX + cornerRadius, y: arrowRect.minY))
+        path.addLine(to: CGPoint(x: arrowRect.maxX, y: arrowRect.minY))
+        path.addArc(
+            withCenter: CGPoint(x: arrowRect.maxX, y: arrowRect.midY),
+            radius: arrowHeight * 0.5,
+            startAngle: -.pi/2,
+            endAngle: .pi/2,
+            clockwise: true
+        )
+        path.addLine(to: CGPoint(x: arrowRect.minX + cornerRadius, y: arrowRect.maxY))
+        path.addQuadCurve(
+            to: CGPoint(x: arrowRect.minX, y: arrowRect.midY),
+            controlPoint: CGPoint(x: arrowRect.minX - arrowHeight * 0.45, y: arrowRect.midY)
+        )
+        path.close()
+
+        // ×（在右侧）
+        let xSize = arrowHeight * 0.35
+        let xCenter = CGPoint(
+            x: arrowRect.maxX - arrowHeight * 0.45,
+            y: arrowRect.midY
+        )
+
+        path.move(to: CGPoint(x: xCenter.x - xSize, y: xCenter.y - xSize))
+        path.addLine(to: CGPoint(x: xCenter.x + xSize, y: xCenter.y + xSize))
+
+        path.move(to: CGPoint(x: xCenter.x - xSize, y: xCenter.y + xSize))
+        path.addLine(to: CGPoint(x: xCenter.x + xSize, y: xCenter.y - xSize))
+
         return path
     }
     
     func updateAppearance() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
         if isEnabled {
-            self.backgroundColor = UIColor(white: 0.98, alpha: 1.0).cgColor
-            deleteLayer.strokeColor = UIColor.black.cgColor
-            self.opacity = 1.0
+            backgroundColor = UIColor(white: 0.98, alpha: 1).cgColor
+            symbolLayer.strokeColor = UIColor.label.cgColor
+            opacity = 1.0
         } else {
-            self.backgroundColor = UIColor(white: 0.85, alpha: 1.0).cgColor
-            deleteLayer.strokeColor = UIColor.gray.cgColor
-            self.opacity = 0.6
+            backgroundColor = UIColor(white: 0.9, alpha: 1).cgColor
+            symbolLayer.strokeColor = UIColor.secondaryLabel.cgColor
+            opacity = 0.55
         }
+
+        CATransaction.commit()
     }
 }
 

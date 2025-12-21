@@ -6,43 +6,50 @@
 //
 
 import UIKit
-// TODO 候选词绘制
+
 public class KeyPopupView: UIView {
 
-    open var currentSelection: String {
-        return candidates[selectedIndex]
-    }
-    
-    private var candidates: [String]
-    var selectedIndex: Int = 0 {
-        didSet { setNeedsDisplay() }
+    // MARK: - Public
+    public var cornerRadius: CGFloat = 10
+    public var contentInset: UIEdgeInsets = .init(top: 8, left: 12, bottom: 8, right: 12)
+    public var itemSpacing: CGFloat = 8
+    public var neckSpacing: CGFloat = 8
+    public var font: UIFont = .systemFont(ofSize: 20)
+
+    public var selectedIndex: Int = 0
+
+    public var currentSelection: String {
+        layoutItems[selectedIndex].text
     }
 
-    public var cornerRadius: CGFloat = 10
-    public var contentInset: UIEdgeInsets = .init(top: 8, left: 8, bottom: 8, right: 8)
-    public var itemSpacing: CGFloat = 8
-    public var neckSpacing: CGFloat = 8 // 脖子的高度
-    public var font: UIFont = .systemFont(ofSize: 20)
-    
-    private var itemFrames: [CGRect] = []   // 每个候选的绘制区域
-    private var _key_position: KeyPosition = .center
-    private var _t_rect: CGRect = .zero
-    // 弹窗键帽与键盘键帽的高度比
-    private var _height_scale: CGFloat = 1.0
+    // MARK: - Private
+    private let candidates: [CandidateItem]
+    private let keyPosition: KeyPosition
+    private let measurer: KBCandidateWidthMeasurer
+
+    private var layoutItems: [CandidateLayoutItem] = []
+    private var textLayers: [CATextLayer] = []
+
     private let shapeLayer = CAShapeLayer()
     private let highlightLayer = CAShapeLayer()
     private let highlightMaskLayer = CAShapeLayer()
-    private let highlightInset = UIEdgeInsets(top: 4, left: 6, bottom: 4, right: 6) //高亮内缩参数
-    private var dragOffsetX: CGFloat = 0   // 相对 keyRect.midX
+
+    private let highlightInset = UIEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
+
+    private var keyRect: CGRect = .zero
+    private var dragOffsetX: CGFloat = 0
+    private var heightScale: CGFloat = 1.0
     
-    public init(candidates: [String], keyPosition position: KeyPosition) {
-        self._key_position = position
+    // MARK: - Init
+    init(candidates: [CandidateItem], keyPosition: KeyPosition) {
         self.candidates = candidates
+        self.keyPosition = keyPosition
+        self.measurer = KBCandidateWidthMeasurer(font: font)
         super.init(frame: .zero)
-        backgroundColor = .clear
+
         isOpaque = false
-        
-        // 异形 layer
+        backgroundColor = .clear
+
         shapeLayer.fillColor = UIColor.systemBackground.cgColor
         shapeLayer.shadowColor = UIColor.black.cgColor
         shapeLayer.shadowOpacity = 0.25
@@ -50,8 +57,7 @@ public class KeyPopupView: UIView {
         shapeLayer.shadowOffset = CGSize(width: 0, height: 4)
 
         layer.addSublayer(shapeLayer)
-        
-        // 高亮 layer
+
         highlightLayer.fillColor = UIColor.systemGray4.cgColor
         highlightLayer.opacity = 0
         layer.addSublayer(highlightLayer)
@@ -59,32 +65,142 @@ public class KeyPopupView: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // MARK: - Layout popup position above/below key
+    // MARK: - Layout
     public func layout(pointingTo target: CGRect, in parent: UIView) {
 
-        // 1️⃣ popup frame（仍然基于 parent / keyRect）
-        let totalWidth = calculateTotalWidth()
-        // 高度 = 按键高度 + 脖子高度 + 可选词键帽高度 + 可选词距离顶部space + 可选词距离底部space
-        let popupHeight: CGFloat = target.height + target.height * _height_scale
-            + contentInset.top + contentInset.bottom + neckSpacing
+        keyRect = parent.convert(target, to: self)
 
-        var x = target.midX - totalWidth / 2
-        x = max(8, min(x, parent.bounds.width - totalWidth - 8))
+        let contentWidth = calculateContentWidth()
+        let popupHeight =
+            target.height
+            + target.height * heightScale
+            + contentInset.top
+            + contentInset.bottom
+            + neckSpacing
+
+        var x = target.midX - contentWidth / 2
+        x = max(8, min(x, parent.bounds.width - contentWidth - 8))
 
         let y = target.maxY - popupHeight
 
-        frame = CGRect(x: x, y: y, width: totalWidth, height: popupHeight)
+        frame = CGRect(x: x, y: y, width: contentWidth, height: popupHeight)
 
-        // 2️⃣ 🔥 键帽 rect → popup 坐标系
-        _t_rect = parent.convert(target, to: self)
-
-        // 3️⃣ 更新 path（核心）
-        updateShapePath()
-
-        // 4️⃣ 子项布局
-        layoutItemFrames()
+        layoutCandidates()
+        layoutTextLayers()
+        updateHighlight(animated: false)
+        updateShapePath(animated: false)
     }
 
+    // MARK: - Candidate Layout
+    private func layoutCandidates() {
+
+        layoutItems = layoutCandidates(
+            items: candidates,
+            measurer: measurer,
+            headRect: keyRect,
+            position: keyPosition,
+            itemSpacing: itemSpacing,
+            horizontalPadding: contentInset.left,
+            verticalCenterY: bounds.midY
+        )
+    }
+
+    private func calculateContentWidth() -> CGFloat {
+        let widths = candidates.map { measurer.width(for: $0.text) }
+        return widths.reduce(0, +)
+            + CGFloat(candidates.count - 1) * itemSpacing
+            + contentInset.left
+            + contentInset.right
+    }
+
+    // MARK: - Text Layers
+    private func layoutTextLayers() {
+
+        if textLayers.count != layoutItems.count {
+            textLayers.forEach { $0.removeFromSuperlayer() }
+            textLayers = layoutItems.map { _ in CATextLayer() }
+
+            for layer in textLayers {
+                layer.contentsScale = UIScreen.main.scale
+                layer.alignmentMode = .center
+                layer.foregroundColor = UIColor.label.cgColor
+                layer.font = font
+                layer.fontSize = font.pointSize
+                self.layer.addSublayer(layer)
+            }
+        }
+
+        for (layer, item) in zip(textLayers, layoutItems) {
+            layer.string = item.text
+            layer.frame = item.frame
+        }
+    }
+
+    // MARK: - Highlight
+    private func updateHighlight(animated: Bool) {
+
+        guard layoutItems.indices.contains(selectedIndex) else { return }
+
+        let rect = layoutItems[selectedIndex]
+            .frame
+            .inset(by: highlightInset)
+
+        let path = UIBezierPath(roundedRect: rect, cornerRadius: 6)
+
+        if animated {
+            let anim = CABasicAnimation(keyPath: "path")
+            anim.fromValue = highlightLayer.path
+            anim.toValue = path.cgPath
+            anim.duration = 0.12
+            anim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            anim.fillMode = .forwards
+            anim.isRemovedOnCompletion = false
+            highlightLayer.add(anim, forKey: "highlight")
+        }
+
+        highlightLayer.path = path.cgPath
+        highlightLayer.opacity = 1
+    }
+    
+    // MARK: - Selection
+    public func updateSelection(for pointInParent: CGPoint) {
+
+        let local = convert(pointInParent, to: self)
+
+        if let index = layoutItems.firstIndex(where: { $0.frame.contains(local) }) {
+            selectedIndex = index
+        } else {
+            selectedIndex = layoutItems
+                .enumerated()
+                .min(by: { abs($0.element.frame.midX - local.x) <
+                            abs($1.element.frame.midX - local.x) })?
+                .offset ?? selectedIndex
+        }
+
+        updateHighlight(animated: true)
+        updateDragOffset(with: local.x)
+    }
+
+    // touchesEnded/Paned 调用
+    public func endTracking() {
+        dragOffsetX = 0
+        updateShapePath(animated: true)
+    }
+    
+    // MARK: - Shape
+    private func updateDragOffset(with localX: CGFloat) {
+
+        let raw = localX - keyRect.midX
+        let maxOffset: CGFloat = 24
+
+        dragOffsetX = max(-maxOffset, min(raw, maxOffset))
+
+        if keyPosition == .leftEdge { dragOffsetX = max(0, dragOffsetX) }
+        if keyPosition == .rightEdge { dragOffsetX = min(0, dragOffsetX) }
+
+        updateShapePath(animated: false)
+    }
+    
     private func updateShapePath(animated: Bool = false) {
 //        let path = _key_position.continuousPopupPath(
 //            baseRect: bounds,
@@ -127,81 +243,6 @@ public class KeyPopupView: UIView {
         shapeLayer.path = newPath.cgPath
         shapeLayer.shadowPath = newPath.cgPath
     }
-    
-    // MARK: - Calculate candidate widths
-    private func calculateTotalWidth() -> CGFloat {
-        let textWidths = candidates.map { ($0 as NSString).size(withAttributes: [.font: font]).width }
-        let totalText = textWidths.reduce(0, +)
-        let totalSpacing = CGFloat(candidates.count - 1) * itemSpacing
-        return totalText + totalSpacing + contentInset.left + contentInset.right
-    }
-
-    private func layoutItemFrames() {
-        itemFrames.removeAll()
-
-        var x: CGFloat = contentInset.left
-        let centerY = bounds.height / 2
-
-        for c in candidates {
-            let size = (c as NSString).size(withAttributes: [.font: font])
-            let rect = CGRect(
-                x: x,
-                y: centerY - size.height / 2,
-                width: size.width,
-                height: size.height
-            )
-            itemFrames.append(rect)
-            x += size.width + itemSpacing
-        }
-        
-        /*
-         let layouts = layoutCandidates(
-             items: candidates,
-             measurer: measurer,
-             headRect: headRect,
-             position: position,
-             itemSpacing: 8,
-             horizontalPadding: 12,
-             verticalCenterY: headRect.midY
-         )
-         */
-    }
-
-    // MARK: - Drawing text
-    public override func draw(_ rect: CGRect) {
-        guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        ctx.clear(rect)
-        
-        // Draw text
-        for (i, c) in candidates.enumerated() {
-            let frame = itemFrames[i]
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: UIColor.label
-            ]
-            (c as NSString).draw(in: frame, withAttributes: attrs)
-        }
-    }
-    
-    private func updateDragOffset(with localX: CGFloat) {
-
-        let keyMidX = _t_rect.midX
-        let rawOffset = localX - keyMidX
-
-        // 最大允许偏移（系统级）
-        let maxOffset: CGFloat = 24
-
-        dragOffsetX = max(-maxOffset, min(rawOffset, maxOffset))
-        // 边缘键的自动抑制(防抖)
-        if _key_position == .leftEdge {
-            dragOffsetX = max(0, dragOffsetX)
-        }
-        if _key_position == .rightEdge {
-            dragOffsetX = min(0, dragOffsetX)
-        }
-        
-        updateShapePath(animated: false)
-    }
 
     private func highlightRect(for itemFrame: CGRect) -> CGRect {
         
@@ -213,70 +254,10 @@ public class KeyPopupView: UIView {
 
         return rect
     }
-    
-    private func updateHighlight(animated: Bool) {
 
-        guard selectedIndex < itemFrames.count else { return }
-
-        let targetRect = highlightRect(for: itemFrames[selectedIndex])
-        let path = UIBezierPath(roundedRect: targetRect, cornerRadius: 6)
-
-        if animated {
-            animateHighlight(to: path)
-        } else {
-            highlightLayer.path = path.cgPath
-            highlightLayer.opacity = 1
-        }
-    }
-    
-    private func animateHighlight(to path: UIBezierPath) {
-
-        let anim = CABasicAnimation(keyPath: "path")
-        anim.fromValue = highlightLayer.path
-        anim.toValue = path.cgPath
-        anim.duration = 0.12
-        anim.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        anim.fillMode = .forwards
-        anim.isRemovedOnCompletion = false
-
-        highlightLayer.add(anim, forKey: "highlightPath")
-        highlightLayer.path = path.cgPath
-        highlightLayer.opacity = 1
-    }
-    
-    // MARK: - Selection update
-    public func updateSelection(for pointInParent: CGPoint) {
-        let local = convert(pointInParent, to: self)
-        
-        for (i, frame) in itemFrames.enumerated() {
-            if frame.contains(local) {
-                selectedIndex = i
-                updateHighlight(animated: true)
-                return
-            }
-        }
-        
-        // Nearest by X if not inside any frame
-        let xs = itemFrames.map { $0.midX }
-        if let nearest = xs.enumerated().min(by: { abs($0.element - local.x) < abs($1.element - local.x) }) {
-            selectedIndex = nearest.offset
-        }
-        
-        // 🔥 新增：更新 path 跟随
-        updateDragOffset(with: local.x)
-        // 🔥 新增：更新 高亮 跟随
-        updateHighlight(animated: false)
-    }
-
-    public func commitSelection() -> String? {
+    func commitSelection() -> CandidateItem? {
         guard candidates.indices.contains(selectedIndex) else { return nil }
         return candidates[selectedIndex]
-    }
-    
-    // touchesEnded/Paned 调用
-    public func endTracking() {
-        dragOffsetX = 0
-        updateShapePath(animated: true)
     }
     
     // popUp 弹出动画

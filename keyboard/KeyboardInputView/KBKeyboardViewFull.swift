@@ -13,23 +13,19 @@ import AudioToolbox
 class KBKeyboardViewFull: UIView {
     weak open var keyboardDelegate: KeyboardViewProtocol?
     // Public injection points
-    public weak var documentProxy: UITextDocumentProxy?    // set by input extension's view controller
     var popupPresenter: DefaultPopupPresenter?            // injected presenter for long-press alternatives
-
+    
     // Layout provider
     private var layoutEngine: KBKeyLayoutEngine!
 
     // Appearance
     public var cornerRadius: CGFloat = 8
     public var keyBackgroundColor: UIColor = UIColor(white: 0.98, alpha: 1)
-    public var keyTextColor: UIColor = .label
-    public var keyFont: UIFont = .systemFont(ofSize: 18)
 
     // Runtime storage
     private var rows: [KBKeyRow] = []
     private var keysFlat: [KBKey] = []
     private var keyLayers: [String: KBBaseKeyLayer] = [:]       // id -> key layer
-    private var textLayers: [String: CATextLayer] = [:]  // id -> text layer
 
     // Touch state
     private var activeKeyID: String? = nil
@@ -41,109 +37,59 @@ class KBKeyboardViewFull: UIView {
     private let impactHaptic = UIImpactFeedbackGenerator(style: .light)
     public var enableClickSound: Bool = true
     private var keyboardType: KeyboardType = .letters
+    // 记录屏幕尺寸变化
+    private var lastLayoutSize: CGSize = .zero
+    private var needsRelayout = true
     
     // MARK: - Init
     override init(frame: CGRect = .zero) {
         super.init(frame: frame)
-        self.layoutEngine = KBKeyLayoutEngine(keyboardWidth: bounds.width, keyboardHeight: bounds.height, rowHeight: 52, keySpacing: 6, sidePadding: 6, topPadding: 8, bottomPadding: 8, maxKeyWidth: 120, provider: KBDefaultKeyboardProvider() as KeyboardLayoutProviding)
         commonInit()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    private func commonInit() {
-        backgroundColor = .clear
-        isOpaque = false
-        isMultipleTouchEnabled = false
-        popupPresenter?.selectedCallback = {[weak self](text: String?) in
-            self?.keyboardDelegate?.didSelectedKeyCap(capText: text ?? "")
-        }
-    }
-
     // MARK: - Layout
-    public override func layoutSubviews() {
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+
+        guard traitCollection.verticalSizeClass != previousTraitCollection?.verticalSizeClass ||
+              traitCollection.horizontalSizeClass != previousTraitCollection?.horizontalSizeClass
+        else { return }
+
+        // ❗️只标记，不 reload
+        needsRelayout = true
+        setNeedsLayout()
+    }
+    
+    override func layoutSubviews() {
         super.layoutSubviews()
+
+        let newSize = bounds.size
+        guard newSize.width > 0, newSize.height > 0 else { return }
+
+        // 尺寸没变 + 没被标记 → 不重排
+        if newSize == lastLayoutSize, !needsRelayout {
+            return
+        }
+
+        lastLayoutSize = newSize
+        needsRelayout = false
+
+        updateLayoutEngineSize()
         reloadLayout()
     }
 
     public func reloadLayout() {
-        guard layoutEngine != nil else { return }
+        guard layoutEngine != nil else {
+            return
+        }
         rows = layoutEngine.layout(for: self.keyboardType)
         keysFlat = rows.flatMap { $0.keys }
         syncLayersWithKeys()
     }
 
-    // Sync layers: create if missing, update frames and text
-    private func syncLayersWithKeys() {
-        let existingIds = Set(keyLayers.keys)
-        let targetIds = Set(keysFlat.map { $0.keyId })
-
-        // remove obsolete
-        for id in existingIds.subtracting(targetIds) {
-            keyLayers[id]?.removeFromSuperlayer()
-            keyLayers.removeValue(forKey: id)
-            textLayers[id]?.removeFromSuperlayer()
-            textLayers.removeValue(forKey: id)
-        }
-
-        for key in keysFlat {
-            let id = key.keyId
-            var layer: KBBaseKeyLayer
-            let config = KBKeyLayerConfig.init(keyBackgroundColor: keyBackgroundColor, cornerRadius: cornerRadius)
-            if let l = keyLayers[id] {
-                layer = l
-            } else {
-                if key.keyType == .delete {
-                    layer = KBDeleteKeyLayer(config: config)
-                }
-                layer = KBCharacterKeyLayer(config: config)
-                keyLayers[id] = layer
-                self.layer.addSublayer(layer)
-            }
-
-            // update frame without implicit animations
-            CATransaction.begin(); CATransaction.setDisableActions(true)
-            layer.frame = key.frame
-            layer.cornerRadius = cornerRadius
-            // update sublayer frames
-            for case let g as CAGradientLayer in (layer.sublayers ?? []) where g.name == "highlight" {
-                g.frame = layer.bounds
-            }
-            if let sep = layer.sublayers?.first(where: { $0.name == "separator" }) {
-                let scale = UIScreen.main.scale
-                sep.frame = CGRect(x: 0, y: layer.bounds.height - 1.0/scale, width: layer.bounds.width, height: 1.0/scale)
-            }
-            CATransaction.commit()
-
-            // text layer
-            if textLayers[id] == nil {
-                let t = CATextLayer()
-                t.contentsScale = UIScreen.main.scale
-                t.alignmentMode = .center
-                t.isWrapped = false
-                t.truncationMode = .end
-                t.foregroundColor = keyTextColor.cgColor
-                t.font = keyFont
-                t.fontSize = keyFont.pointSize
-                t.isWrapped = false
-                layer.addSublayer(t)
-                textLayers[id] = t
-            }
-            if let t = textLayers[id] {
-                CATransaction.begin(); CATransaction.setDisableActions(true)
-                t.string = key.keyLabel as NSString
-                let size = (key.keyLabel as NSString).size(withAttributes: [.font: keyFont])
-                t.frame = CGRect(x: 0, y: (layer.bounds.height - size.height)/2 - 1, width: layer.bounds.width, height: size.height)
-                CATransaction.commit()
-            }
-        }
-    }
-
     // MARK: - Touch handling & animations
-    private func keyId(at point: CGPoint) -> String? {
-        return keysFlat.first { $0.frame.contains(point) }?.keyId
-    }
-
     public override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let p = touches.first?.location(in: self), let id = keyId(at: p) else { return }
         activeKeyID = id
@@ -212,7 +158,10 @@ class KBKeyboardViewFull: UIView {
         longPressTimer?.invalidate()
         longPressTimer = nil
 
-        guard let p = touches.first?.location(in: self) else { cleanupTouch(); return }
+        guard let p = touches.first?.location(in: self) else {
+            cleanupTouch()
+            return
+        }
 
         if isLongPressActive {
             popupPresenter?.commit()
@@ -229,7 +178,6 @@ class KBKeyboardViewFull: UIView {
                 _press_layer.animatePressUp()
             }
             performKeyAction(key)
-            self.keyboardDelegate?.didSelectedKeyCap(capText: key.keyLabel)
         } else if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
             _pre_key_layer.animatePressUp()
         }
@@ -246,14 +194,11 @@ class KBKeyboardViewFull: UIView {
         }
         cleanupTouch()
     }
+}
 
-    private func cleanupTouch() {
-        activeKeyID = nil
-        selectionHaptic.prepare() // keep generator ready
-    }
-
-    // MARK: - Key actions
-    private func performKeyAction(_ key: KBKey) {
+// MARK: - Key actions
+private extension KBKeyboardViewFull {
+    func performKeyAction(_ key: KBKey) {
         switch key.keyType {
         case .character:
             commitText(key.keyLabel)
@@ -265,8 +210,6 @@ class KBKeyboardViewFull: UIView {
             commitText("\n")
         case .shift:
             // leave to host to implement casing
-            break
-        case.delete:
             break
         case .special:
             // switching layouts (assume id == "numbers" or id == "123")
@@ -283,23 +226,95 @@ class KBKeyboardViewFull: UIView {
         }
     }
 
-    private func commitText(_ text: String) {
-        if let proxy = documentProxy {
-            proxy.insertText(text)
-        } else {
-//            if enableClickSound {
-//                AudioServicesPlaySystemSound(1104)
-//            }
-        }
+    func commitText(_ text: String) {
+        self.keyboardDelegate?.didSelectedKeyCap(capText: text)
     }
 
-    private func deleteBackward() {
-        if let proxy = documentProxy {
-            proxy.deleteBackward()
-        } else {
-            if enableClickSound {
-                AudioServicesPlaySystemSound(1104)
+    func deleteBackward() {
+        self.keyboardDelegate?.deleteText()
+    }
+}
+
+private extension KBKeyboardViewFull {
+    func commonInit() {
+        backgroundColor = .clear
+        isOpaque = false
+        isMultipleTouchEnabled = false
+        self.layoutEngine = KBKeyLayoutEngine(keyboardWidth: bounds.width, keyboardHeight: bounds.height, rowHeight: 52, keySpacing: 6, sidePadding: 6, topPadding: 8, bottomPadding: 8, maxKeyWidth: 120, provider: KBDefaultKeyboardProvider() as KeyboardLayoutProviding)
+        
+        popupPresenter?.selectedCallback = {[weak self](text: String?) in
+            self?.keyboardDelegate?.didSelectedKeyCap(capText: text ?? "")
+        }
+    }
+    
+    // Sync layers: create if missing, update frames and text
+    func syncLayersWithKeys() {
+        let existingIds = Set(keyLayers.keys)
+        let targetIds = Set(keysFlat.map { $0.keyId })
+
+        // remove obsolete
+        for id in existingIds.subtracting(targetIds) {
+            keyLayers[id]?.clearTextLayer()
+            keyLayers[id]?.removeFromSuperlayer()
+            keyLayers.removeValue(forKey: id)
+        }
+
+        for key in keysFlat {
+            let id = key.keyId
+            var layer: KBBaseKeyLayer
+            let config = KBKeyLayerConfig.init(cornerRadius: cornerRadius)
+            if let l = keyLayers[id] {
+                layer = l
+            } else {
+                if key.keyType == .backspace {
+                    layer = KBDeleteKeyLayer(config: config)
+                    layer.keyRole = .function
+                } else if key.keyType == .shift {
+                    layer = KBShiftKeyLayer(config: config)
+                    layer.keyRole = .function
+                } else {
+                    layer = KBCharacterKeyLayer(config: config)
+                }
+                
+                layer.traitCollection = self.traitCollection
+                layer.visualState = .normal
+                keyLayers[id] = layer
+                self.layer.addSublayer(layer)
             }
+
+            // update frame without implicit animations
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.frame = key.frame
+            CATransaction.commit()
+            
+            if key.keyType != .backspace && key.keyType != .shift {
+                let textLayerConfig = KBKeyTextLayerConfig()
+                layer.createTextLayerIfNeeded(textLayerConfig: textLayerConfig)
+                layer.updateTextLayer(key: key, config: textLayerConfig)
+            }
+        }
+    }
+    
+    func keyId(at point: CGPoint) -> String? {
+        return keysFlat.first { $0.frame.contains(point) }?.keyId
+    }
+    
+    func cleanupTouch() {
+        activeKeyID = nil
+        selectionHaptic.prepare() // keep generator ready
+    }
+
+    func updateLayoutEngineSize() {
+        layoutEngine.keyboardWidth = bounds.width
+        layoutEngine.keyboardHeight = bounds.height
+
+        // 🔥 关键：传 safeArea
+        layoutEngine.safeAreaInsets = self.safeAreaInsets
+        if traitCollection.userInterfaceIdiom == .pad {
+            layoutEngine.maxKeyWidth = bounds.width > bounds.height ? 56 : 64
+        } else {
+            layoutEngine.maxKeyWidth = nil
         }
     }
 }
