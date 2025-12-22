@@ -11,7 +11,9 @@ import AudioToolbox
 class KBDeleteKeyLayer: KBBaseKeyLayer {
 
     private let symbolLayer = CAShapeLayer()
-
+    private let symbolXLayer1 = CAShapeLayer()
+    private let symbolXLayer2 = CAShapeLayer()
+    
     var isEnabled: Bool = true {
         didSet { updateAppearance() }
     }
@@ -29,7 +31,6 @@ class KBDeleteKeyLayer: KBBaseKeyLayer {
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - Layout
-
     override func layoutSublayers() {
         super.layoutSublayers()
 
@@ -39,15 +40,19 @@ class KBDeleteKeyLayer: KBBaseKeyLayer {
         symbolLayer.frame = bounds
         symbolLayer.path = deleteIconPath(in: bounds).cgPath
 
+        let metrics = deleteIconMetrics(in: bounds)
+        updateXPaths(in: metrics.bodyRect, iconHeight: metrics.iconHeight)
+
         CATransaction.commit()
     }
     
     override func applyStyle(animated: Bool) {
         super.applyStyle(animated: animated)
 
-        let color = isDarkMode ? UIColor.white : UIColor.black
-        symbolLayer.strokeColor = color.cgColor
-        symbolLayer.fillColor = color.cgColor
+        let fillColor = isDarkMode ? UIColor.white : UIColor.clear
+        let strokeColor = isDarkMode ? UIColor.white : UIColor.black
+        symbolLayer.strokeColor = strokeColor.cgColor
+        symbolLayer.fillColor = fillColor.cgColor
     }
 }
 
@@ -59,7 +64,21 @@ private extension KBDeleteKeyLayer {
         symbolLayer.lineCap = .round
         symbolLayer.lineJoin = .round
 
+        symbolXLayer1.contentsScale = UIScreen.main.scale
+        symbolXLayer1.strokeColor = UIColor.label.cgColor
+        symbolXLayer1.lineWidth = 1.8
+        symbolXLayer1.lineCap = .round
+        symbolXLayer1.lineJoin = .round
+        
+        symbolXLayer2.contentsScale = UIScreen.main.scale
+        symbolXLayer2.strokeColor = UIColor.label.cgColor
+        symbolXLayer2.lineWidth = 1.8
+        symbolXLayer2.lineCap = .round
+        symbolXLayer2.lineJoin = .round
+        
         addSublayer(symbolLayer)
+        symbolLayer.addSublayer(symbolXLayer1)
+        symbolLayer.addSublayer(symbolXLayer2)
     }
     
     func deleteIconPath(in rect: CGRect) -> UIBezierPath {
@@ -67,17 +86,18 @@ private extension KBDeleteKeyLayer {
         let w = rect.width
         let h = rect.height
 
-        // 整体高度（iOS 大约是 key 高度的 0.28）
-        let iconHeight = h * 0.28
-        let arrowWidth = iconHeight * 0.9
-        let bodyWidth  = iconHeight * 1.4
+        // 整体高度（iOS 大约是 key 高度的 0.28 - 0.33）
+        let iconHeight = h * 0.3
+        let arrowWidth = iconHeight * 0.6
+        let bodyWidth  = iconHeight * 1.2
         let corner: CGFloat = iconHeight * 0.22
 
         let center = CGPoint(x: w * 0.52, y: h * 0.5)
 
         let arrowLeftX = center.x - (arrowWidth + bodyWidth) * 0.5
         let bodyLeftX  = arrowLeftX + arrowWidth
-
+        let bodyRightX = bodyLeftX + bodyWidth
+        
         let topY = center.y - iconHeight * 0.5
         let bottomY = center.y + iconHeight * 0.5
 
@@ -86,33 +106,81 @@ private extension KBDeleteKeyLayer {
         // ───── 左侧三角箭头 ─────
         path.move(to: CGPoint(x: arrowLeftX, y: center.y))
         path.addLine(to: CGPoint(x: bodyLeftX, y: topY))
+        
+        // body 顶部平线
+        path.addLine(to: CGPoint(x: (bodyRightX - corner), y: topY))
+        
+        // body 右上圆角
+        path.addQuadCurve(to: CGPoint(x: bodyRightX, y: (topY + corner)), controlPoint: CGPoint(x: bodyRightX, y: topY))
+        
+        // body 右侧直线
+        path.addLine(to: CGPoint(x: bodyRightX, y: (bottomY - corner)))
+        
+        // body 右下圆角
+        path.addQuadCurve(to: CGPoint(x: (bodyRightX - corner), y: bottomY), controlPoint: CGPoint(x: bodyRightX, y: bottomY))
+        
+        // body 底部直线
         path.addLine(to: CGPoint(x: bodyLeftX, y: bottomY))
+        
         path.close()
 
-        // ───── 右侧矩形 ─────
+        return path
+    }
+    
+    func updateXPaths(in bodyRect: CGRect, iconHeight: CGFloat) {
+        // 微调 -- 中心点偏左 2 个像素
+        let center = CGPoint(x: bodyRect.midX - 2, y: bodyRect.midY)
+
+        let xInset = iconHeight * 0.28
+
+        let p1 = CGPoint(x: center.x - xInset, y: center.y - xInset)
+        let p2 = CGPoint(x: center.x + xInset, y: center.y + xInset)
+
+        let p3 = CGPoint(x: center.x - xInset, y: center.y + xInset)
+        let p4 = CGPoint(x: center.x + xInset, y: center.y - xInset)
+
+        let path1 = UIBezierPath()
+        path1.move(to: p1)
+        path1.addLine(to: p2)
+
+        let path2 = UIBezierPath()
+        path2.move(to: p3)
+        path2.addLine(to: p4)
+
+        symbolXLayer1.frame = bounds
+        symbolXLayer1.path = path1.cgPath
+
+        symbolXLayer2.frame = bounds
+        symbolXLayer2.path = path2.cgPath
+    }
+    
+    func deleteIconMetrics(in rect: CGRect) -> (
+        bodyRect: CGRect,
+        iconHeight: CGFloat
+    ) {
+        let h = rect.height
+        let iconHeight = h * 0.3
+
+        let arrowWidth = iconHeight * 0.6
+        let bodyWidth  = iconHeight * 1.2
+
+        let centerY = rect.height * 0.5
+        let centerX = rect.width * 0.52
+
+        let arrowLeftX = centerX - (arrowWidth + bodyWidth) * 0.5
+        let bodyLeftX  = arrowLeftX + arrowWidth
+
+        let topY = centerY - iconHeight * 0.5
+        let bottomY = centerY + iconHeight * 0.5
+
         let bodyRect = CGRect(
             x: bodyLeftX,
             y: topY,
             width: bodyWidth,
-            height: iconHeight
+            height: bottomY - topY
         )
 
-        path.append(UIBezierPath(
-            roundedRect: bodyRect,
-            cornerRadius: corner
-        ))
-
-        // ───── 中间的 X ─────
-        let xInset = iconHeight * 0.28
-        let xRect = bodyRect.insetBy(dx: xInset, dy: xInset)
-
-        path.move(to: CGPoint(x: xRect.minX, y: xRect.minY))
-        path.addLine(to: CGPoint(x: xRect.maxX, y: xRect.maxY))
-
-        path.move(to: CGPoint(x: xRect.minX, y: xRect.maxY))
-        path.addLine(to: CGPoint(x: xRect.maxX, y: xRect.minY))
-
-        return path
+        return (bodyRect, iconHeight)
     }
     
     func updateAppearance() {
@@ -122,10 +190,14 @@ private extension KBDeleteKeyLayer {
         if isEnabled {
             backgroundColor = UIColor(white: 0.98, alpha: 1).cgColor
             symbolLayer.strokeColor = UIColor.label.cgColor
+            symbolXLayer1.strokeColor = UIColor.label.cgColor
+            symbolXLayer2.strokeColor = UIColor.label.cgColor
             opacity = 1.0
         } else {
             backgroundColor = UIColor(white: 0.9, alpha: 1).cgColor
             symbolLayer.strokeColor = UIColor.secondaryLabel.cgColor
+            symbolXLayer1.strokeColor = UIColor.secondaryLabel.cgColor
+            symbolXLayer2.strokeColor = UIColor.secondaryLabel.cgColor
             opacity = 0.55
         }
 

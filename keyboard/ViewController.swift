@@ -35,6 +35,10 @@ class ViewController: UIViewController {
 //        
 //        popup.selectedIndex = 0
 //        popup.animateAppear()
+        
+        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 2, execute: {
+            self.textFiled.becomeFirstResponder()
+        })
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {

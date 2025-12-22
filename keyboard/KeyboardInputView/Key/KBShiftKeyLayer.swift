@@ -16,7 +16,10 @@ enum ShiftState {
 class KBShiftKeyLayer: KBBaseKeyLayer {
 
     private let symbolLayer = CAShapeLayer()
-
+    private let lockIndicatorLayer = CAShapeLayer()
+    // 时间状态机, 判断大小写切换
+    private var lastShiftTapTime: TimeInterval = 0
+    private let doubleTapThreshold: TimeInterval = 0.28
     var shiftState: ShiftState = .lowercase {
         didSet { updateAppearance(animated: true) }
     }
@@ -28,6 +31,7 @@ class KBShiftKeyLayer: KBBaseKeyLayer {
     override init(config: KBKeyLayerConfig) {
         super.init(config: config)
         setupSymbolLayer()
+        setupLockIndicatorLayer()
         updateAppearance(animated: false)
     }
 
@@ -42,6 +46,9 @@ class KBShiftKeyLayer: KBBaseKeyLayer {
         symbolLayer.frame = bounds
         symbolLayer.path = shiftSymbolPath(in: bounds).cgPath
 
+        lockIndicatorLayer.frame = bounds
+        lockIndicatorLayer.path = lockIndicatorPath(in: bounds).cgPath
+        
         CATransaction.commit()
     }
     
@@ -52,6 +59,32 @@ class KBShiftKeyLayer: KBBaseKeyLayer {
         symbolLayer.strokeColor = color.cgColor
         symbolLayer.fillColor =
             shiftState == .lowercase ? UIColor.clear.cgColor : color.cgColor
+    }
+    
+    public func handleShiftTap(currentTime: TimeInterval = CACurrentMediaTime()) {
+
+        switch shiftState {
+
+        case .lowercase:
+            // 第一次点击
+            shiftState = .uppercase
+            lastShiftTapTime = currentTime
+
+        case .uppercase:
+            // 判断是否是双击
+            if currentTime - lastShiftTapTime <= doubleTapThreshold {
+                shiftState = .locked
+            } else {
+                // 超时 → 视为重新开始
+                shiftState = .uppercase
+            }
+            lastShiftTapTime = currentTime
+
+        case .locked:
+            // Caps Lock 下再点一次 → 关闭
+            shiftState = .lowercase
+            lastShiftTapTime = 0
+        }
     }
 }
 
@@ -65,48 +98,122 @@ private extension KBShiftKeyLayer {
         addSublayer(symbolLayer)
     }
     
+    func setupLockIndicatorLayer() {
+        lockIndicatorLayer.contentsScale = UIScreen.main.scale
+        lockIndicatorLayer.lineCap = .round
+        lockIndicatorLayer.fillColor = UIColor.label.cgColor
+        lockIndicatorLayer.opacity = 0.0
+        addSublayer(lockIndicatorLayer)
+    }
+    
     func shiftSymbolPath(in rect: CGRect) -> UIBezierPath {
-        let w = rect.width
+
         let h = rect.height
 
-        let centerX = w * 0.5
-        let topY = h * 0.28
-        let headWidth = w * 0.28
-        let headHeight = h * 0.18
-        let stemWidth = w * 0.12
-        let stemHeight = h * 0.32
+        let bodyW = h * 0.18
+        let bodyH = h * 0.12
+
+        let headW = bodyW * 2.35
+        let headH = bodyH * 1.55
+
+        let corner = bodyH * 0.25
+
+        let cx = rect.midX
+        let cy = rect.midY
 
         let path = UIBezierPath()
 
-        // arrow head
-        path.move(to: CGPoint(x: centerX, y: topY))
-        path.addLine(to: CGPoint(x: centerX - headWidth * 0.5, y: topY + headHeight))
-        path.addLine(to: CGPoint(x: centerX - stemWidth * 0.5, y: topY + headHeight))
-        path.addLine(to: CGPoint(x: centerX - stemWidth * 0.5, y: topY + headHeight + stemHeight))
-        path.addLine(to: CGPoint(x: centerX + stemWidth * 0.5, y: topY + headHeight + stemHeight))
-        path.addLine(to: CGPoint(x: centerX + stemWidth * 0.5, y: topY + headHeight))
-        path.addLine(to: CGPoint(x: centerX + headWidth * 0.5, y: topY + headHeight))
+        // 起点：body 顶部中线
+        path.move(to: CGPoint(x: cx - bodyW * 0.5, y: cy))
+
+        // 向左到箭头底
+        path.addLine(to: CGPoint(x: cx - headW * 0.5, y: cy))
+
+        // 箭头顶
+        path.addLine(to: CGPoint(x: cx, y: cy - headH))
+
+        // 向右回到底
+        path.addLine(to: CGPoint(x: cx + headW * 0.5, y: cy))
+
+        // 回到 body 右上
+        path.addLine(to: CGPoint(x: cx + bodyW * 0.5, y: cy))
+
+        // body 右侧
+        path.addLine(to: CGPoint(x: cx + bodyW * 0.5, y: cy + bodyH - corner))
+
+        // 右下圆角
+        path.addQuadCurve(
+            to: CGPoint(x: cx + bodyW * 0.5 - corner, y: cy + bodyH),
+            controlPoint: CGPoint(x: cx + bodyW * 0.5, y: cy + bodyH)
+        )
+
+        // 底边
+        path.addLine(to: CGPoint(x: cx - bodyW * 0.5 + corner, y: cy + bodyH))
+
+        // 左下圆角
+        path.addQuadCurve(
+            to: CGPoint(x: cx - bodyW * 0.5, y: cy + bodyH - corner),
+            controlPoint: CGPoint(x: cx - bodyW * 0.5, y: cy + bodyH)
+        )
+
         path.close()
 
         return path
     }
     
+    func lockIndicatorPath(in rect: CGRect) -> UIBezierPath {
+
+        let h = rect.height
+
+        let width = h * 0.14
+        let height: CGFloat = 1.6
+        let corner: CGFloat = height * 0.5
+
+        let cx = rect.midX
+        let y = rect.midY + h * 0.18
+
+        let rect = CGRect(
+            x: cx - width * 0.5,
+            y: y,
+            width: width,
+            height: height
+        )
+
+        return UIBezierPath(roundedRect: rect, cornerRadius: corner)
+    }
+    
     func updateAppearance(animated: Bool) {
 
+        let baseBackground: CGColor = {
+            isDarkMode
+            ? UIColor(white: 0.22, alpha: 1).cgColor
+            : UIColor(white: 0.98, alpha: 1).cgColor
+        }()
+
+        let lockBackground: CGColor =
+            UIColor.systemBlue.withAlphaComponent(isDarkMode ? 0.28 : 0.18).cgColor
+
         let changes = {
+
             switch self.shiftState {
 
             case .lowercase:
                 self.symbolLayer.fillColor = UIColor.clear.cgColor
                 self.symbolLayer.strokeColor = UIColor.label.cgColor
+                self.backgroundColor = baseBackground
+                self.animateLockIndicator(show: false)
 
             case .uppercase:
                 self.symbolLayer.fillColor = UIColor.label.cgColor
                 self.symbolLayer.strokeColor = UIColor.label.cgColor
+                self.backgroundColor = baseBackground
+                self.animateLockIndicator(show: false)
 
             case .locked:
                 self.symbolLayer.fillColor = UIColor.label.cgColor
                 self.symbolLayer.strokeColor = UIColor.label.cgColor
+                self.backgroundColor = lockBackground
+                self.animateLockIndicator(show: true)
             }
         }
 
@@ -121,5 +228,25 @@ private extension KBShiftKeyLayer {
             changes()
             CATransaction.commit()
         }
+    }
+}
+
+private extension KBShiftKeyLayer {
+    func animateLockIndicator(show: Bool) {
+
+        let opacityAnim = CABasicAnimation(keyPath: "opacity")
+        opacityAnim.fromValue = show ? 0.0 : 1.0
+        opacityAnim.toValue = show ? 1.0 : 0.0
+        opacityAnim.duration = 0.12
+
+        let scaleAnim = CABasicAnimation(keyPath: "transform.scale.x")
+        scaleAnim.fromValue = show ? 0.6 : 1.0
+        scaleAnim.toValue = show ? 1.0 : 0.6
+        scaleAnim.duration = 0.12
+        scaleAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        lockIndicatorLayer.opacity = show ? 1.0 : 0.0
+        lockIndicatorLayer.add(opacityAnim, forKey: "opacity")
+        lockIndicatorLayer.add(scaleAnim, forKey: "scale")
     }
 }
