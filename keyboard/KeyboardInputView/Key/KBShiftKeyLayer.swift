@@ -21,6 +21,10 @@ class KBShiftKeyLayer: KBBaseKeyLayer {
         didSet { updateAppearance(animated: true) }
     }
 
+    override init(layer: Any) {
+        super.init(layer: layer)
+    }
+    
     override init(config: KBKeyLayerConfig) {
         super.init(config: config)
         setupSymbolLayer()

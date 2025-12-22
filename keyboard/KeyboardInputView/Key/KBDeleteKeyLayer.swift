@@ -22,6 +22,10 @@ class KBDeleteKeyLayer: KBBaseKeyLayer {
         updateAppearance()
     }
 
+    override init(layer: Any) {
+        super.init(layer: layer)
+    }
+    
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - Layout
@@ -50,7 +54,6 @@ class KBDeleteKeyLayer: KBBaseKeyLayer {
 private extension KBDeleteKeyLayer {
     func setupIconLayer() {
         symbolLayer.contentsScale = UIScreen.main.scale
-        symbolLayer.fillColor = UIColor.clear.cgColor
         symbolLayer.strokeColor = UIColor.label.cgColor
         symbolLayer.lineWidth = 1.8
         symbolLayer.lineCap = .round
@@ -60,53 +63,54 @@ private extension KBDeleteKeyLayer {
     }
     
     func deleteIconPath(in rect: CGRect) -> UIBezierPath {
+
         let w = rect.width
         let h = rect.height
 
+        // 整体高度（iOS 大约是 key 高度的 0.28）
+        let iconHeight = h * 0.28
+        let arrowWidth = iconHeight * 0.9
+        let bodyWidth  = iconHeight * 1.4
+        let corner: CGFloat = iconHeight * 0.22
+
         let center = CGPoint(x: w * 0.52, y: h * 0.5)
 
-        let arrowWidth = w * 0.36
-        let arrowHeight = h * 0.28
-        let cornerRadius = arrowHeight * 0.25
+        let arrowLeftX = center.x - (arrowWidth + bodyWidth) * 0.5
+        let bodyLeftX  = arrowLeftX + arrowWidth
+
+        let topY = center.y - iconHeight * 0.5
+        let bottomY = center.y + iconHeight * 0.5
 
         let path = UIBezierPath()
 
-        // 左箭头主体（胶囊形）
-        let arrowRect = CGRect(
-            x: center.x - arrowWidth * 0.5,
-            y: center.y - arrowHeight * 0.5,
-            width: arrowWidth,
-            height: arrowHeight
-        )
-
-        path.move(to: CGPoint(x: arrowRect.minX + cornerRadius, y: arrowRect.minY))
-        path.addLine(to: CGPoint(x: arrowRect.maxX, y: arrowRect.minY))
-        path.addArc(
-            withCenter: CGPoint(x: arrowRect.maxX, y: arrowRect.midY),
-            radius: arrowHeight * 0.5,
-            startAngle: -.pi/2,
-            endAngle: .pi/2,
-            clockwise: true
-        )
-        path.addLine(to: CGPoint(x: arrowRect.minX + cornerRadius, y: arrowRect.maxY))
-        path.addQuadCurve(
-            to: CGPoint(x: arrowRect.minX, y: arrowRect.midY),
-            controlPoint: CGPoint(x: arrowRect.minX - arrowHeight * 0.45, y: arrowRect.midY)
-        )
+        // ───── 左侧三角箭头 ─────
+        path.move(to: CGPoint(x: arrowLeftX, y: center.y))
+        path.addLine(to: CGPoint(x: bodyLeftX, y: topY))
+        path.addLine(to: CGPoint(x: bodyLeftX, y: bottomY))
         path.close()
 
-        // ×（在右侧）
-        let xSize = arrowHeight * 0.35
-        let xCenter = CGPoint(
-            x: arrowRect.maxX - arrowHeight * 0.45,
-            y: arrowRect.midY
+        // ───── 右侧矩形 ─────
+        let bodyRect = CGRect(
+            x: bodyLeftX,
+            y: topY,
+            width: bodyWidth,
+            height: iconHeight
         )
 
-        path.move(to: CGPoint(x: xCenter.x - xSize, y: xCenter.y - xSize))
-        path.addLine(to: CGPoint(x: xCenter.x + xSize, y: xCenter.y + xSize))
+        path.append(UIBezierPath(
+            roundedRect: bodyRect,
+            cornerRadius: corner
+        ))
 
-        path.move(to: CGPoint(x: xCenter.x - xSize, y: xCenter.y + xSize))
-        path.addLine(to: CGPoint(x: xCenter.x + xSize, y: xCenter.y - xSize))
+        // ───── 中间的 X ─────
+        let xInset = iconHeight * 0.28
+        let xRect = bodyRect.insetBy(dx: xInset, dy: xInset)
+
+        path.move(to: CGPoint(x: xRect.minX, y: xRect.minY))
+        path.addLine(to: CGPoint(x: xRect.maxX, y: xRect.maxY))
+
+        path.move(to: CGPoint(x: xRect.minX, y: xRect.maxY))
+        path.addLine(to: CGPoint(x: xRect.maxX, y: xRect.minY))
 
         return path
     }

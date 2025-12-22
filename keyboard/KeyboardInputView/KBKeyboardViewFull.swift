@@ -40,6 +40,8 @@ class KBKeyboardViewFull: UIView {
     // 记录屏幕尺寸变化
     private var lastLayoutSize: CGSize = .zero
     private var needsRelayout = true
+    // 当前活跃 key 的交互序列
+    private var interactionSequence: Int = 0
     
     // MARK: - Init
     override init(frame: CGRect = .zero) {
@@ -94,10 +96,13 @@ class KBKeyboardViewFull: UIView {
         guard let p = touches.first?.location(in: self), let id = keyId(at: p) else { return }
         activeKeyID = id
         isLongPressActive = false
-
+        
         // press visual
         if let _key_layer = keyLayers[id] {
+            // 交互序列 ++
+            interactionSequence += 1
             _key_layer.animateKeyPressDown()
+            _key_layer.currentInteractionSeq = interactionSequence
         }
 
         // prepare haptics
@@ -132,7 +137,15 @@ class KBKeyboardViewFull: UIView {
             if id != activeKeyID {
                 // previous key release visual
                 if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
-                    _pre_key_layer.animatePressUp()
+                    _pre_key_layer.animatePressUp {
+                        // 仅恢复当前活跃的 key 的稳定态
+                        guard _pre_key_layer.currentInteractionSeq == self.interactionSequence else {
+                            return
+                        }
+                        
+                        // 动画结束， 按键恢复至稳定态
+                        _pre_key_layer.setVisualState(KBKeyVisualState.normal, animated: true)
+                    }
                 }
                 activeKeyID = id
                 
@@ -148,7 +161,15 @@ class KBKeyboardViewFull: UIView {
         } else {
             // left keys area
             if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
-                _pre_key_layer.animatePressUp()
+                _pre_key_layer.animatePressUp {
+                    // 仅恢复当前活跃的 key 的稳定态
+                    guard _pre_key_layer.currentInteractionSeq == self.interactionSequence else {
+                        return
+                    }
+                    
+                    // 动画结束， 按键恢复至稳定态
+                    _pre_key_layer.setVisualState(KBKeyVisualState.normal, animated: true)
+                }
             }
             activeKeyID = nil
         }
@@ -175,11 +196,27 @@ class KBKeyboardViewFull: UIView {
         if let id = keyId(at: p), let key = keysFlat.first(where: { $0.keyId == id }) {
             // visual release
             if let _press_layer = keyLayers[id] {
-                _press_layer.animatePressUp()
+                _press_layer.animatePressUp {
+                    // 仅恢复当前活跃的 key 的稳定态
+                    guard _press_layer.currentInteractionSeq == self.interactionSequence else {
+                        return
+                    }
+                    
+                    // 动画结束， 按键恢复至稳定态
+                    _press_layer.setVisualState(KBKeyVisualState.normal, animated: true)
+                }
             }
             performKeyAction(key)
         } else if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
-            _pre_key_layer.animatePressUp()
+            _pre_key_layer.animatePressUp {
+                // 仅恢复当前活跃的 key 的稳定态
+                guard _pre_key_layer.currentInteractionSeq == self.interactionSequence else {
+                    return
+                }
+                
+                // 动画结束， 按键恢复至稳定态
+                _pre_key_layer.setVisualState(KBKeyVisualState.normal, animated: true)
+            }
         }
 
         cleanupTouch()
@@ -190,7 +227,15 @@ class KBKeyboardViewFull: UIView {
         longPressTimer = nil
         if isLongPressActive { popupPresenter?.hide(); isLongPressActive = false }
         if let id = activeKeyID, let _active_key_layer = keyLayers[id] {
-            _active_key_layer.animatePressUp()
+            _active_key_layer.animatePressUp {
+                // 仅恢复当前活跃的 key 的稳定态
+                guard _active_key_layer.currentInteractionSeq == self.interactionSequence else {
+                    return
+                }
+                
+                // 动画结束， 按键恢复至稳定态
+                _active_key_layer.setVisualState(KBKeyVisualState.normal, animated: true)
+            }
         }
         cleanupTouch()
     }
@@ -277,7 +322,7 @@ private extension KBKeyboardViewFull {
                 }
                 
                 layer.traitCollection = self.traitCollection
-                layer.visualState = .normal
+                layer.setVisualState(KBKeyVisualState.normal, animated: false)
                 keyLayers[id] = layer
                 self.layer.addSublayer(layer)
             }

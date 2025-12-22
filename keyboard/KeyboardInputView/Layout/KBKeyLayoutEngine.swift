@@ -42,6 +42,100 @@ class KBKeyLayoutEngine: NSObject {
     }
     
     /// 计算指定键盘类型的所有行与键位 frame
+//    public func layout(for keyboardType: KeyboardType) -> [KBKeyRow] {
+//
+//        var rows = provider.rows(for: keyboardType)
+//
+//        let contentWidth =
+//            keyboardWidth
+//            - sidePadding * 2
+//            - safeAreaInsets.left
+//            - safeAreaInsets.right
+//        var currentY = topPadding
+//        SystemKeyboardMetrics.secondRowIndentFactor = keyboardWidth > keyboardHeight ? 0.42 : 0.5
+//        
+//        for rowIndex in rows.indices {
+//
+//            var row = rows[rowIndex]
+//
+//            let multipliers: [CGFloat] = row.keys.map {
+//                row.customWidthMultipliers[$0.keyId] ?? 1.0
+//            }
+//            let totalMultiplier = multipliers.reduce(0, +)
+//
+//            let isSecondRow = rowIndex == 1
+//
+//            // 🔥 spacing 由相邻 pair 决定（左右对称）
+//            func spacingBetween(_ left: KBKey, _ right: KBKey) -> CGFloat {
+//                if left.keyType == .shift || left.keyType == .backspace ||
+//                   right.keyType == .shift || right.keyType == .backspace {
+//                    return SystemKeyboardMetrics.functionSpacing
+//                }
+//                return SystemKeyboardMetrics.normalSpacing
+//            }
+//
+//            let totalSpacing: CGFloat = row.keys.enumerated().reduce(0) { acc, pair in
+//                let (i, key) = pair
+//                guard i < row.keys.count - 1 else { return acc }
+//                return acc + spacingBetween(key, row.keys[i + 1])
+//            }
+//
+//            // ① 先算 unitWidth（不含缩进）
+//            var unitWidth = (contentWidth - totalSpacing) / totalMultiplier
+//
+//            if let maxKeyWidth, unitWidth > maxKeyWidth {
+//                unitWidth = maxKeyWidth
+//            }
+//
+//            if unitWidth < 18 {
+//                unitWidth = max(18, (contentWidth - totalSpacing) / CGFloat(row.keys.count))
+//            }
+//
+//            // 🔥 ② 用 unitWidth 反推第二行的真实缩进
+//            let secondRowInset: CGFloat = isSecondRow
+//                ? unitWidth * SystemKeyboardMetrics.secondRowIndentFactor
+//                : 0
+//
+//            // 🔥 ③ 有效宽度重新计算（左右各扣一个 inset）
+//            let effectiveContentWidth =
+//                contentWidth
+//                - totalSpacing
+//                - secondRowInset * 2
+//
+//            // 🔥 ④ 用有效宽度重新算 unitWidth（最终值）
+//            unitWidth = effectiveContentWidth / totalMultiplier
+//
+//            var currentX =
+//                sidePadding
+//                + safeAreaInsets.left
+//                + secondRowInset
+//            
+//            for i in row.keys.indices {
+//
+//                var key = row.keys[i]
+//                let keyWidth = unitWidth * multipliers[i]
+//
+//                key.frame = CGRect(
+//                    x: currentX,
+//                    y: currentY,
+//                    width: keyWidth,
+//                    height: rowHeight
+//                )
+//
+//                row.keys[i] = key
+//
+//                if i < row.keys.count - 1 {
+//                    currentX += keyWidth + spacingBetween(key, row.keys[i + 1])
+//                }
+//            }
+//
+//            updateKeyPositions(for: &row)
+//            rows[rowIndex] = row
+//            currentY += rowHeight + keySpacing
+//        }
+//
+//        return rows
+//    }
     public func layout(for keyboardType: KeyboardType) -> [KBKeyRow] {
 
         var rows = provider.rows(for: keyboardType)
@@ -51,21 +145,20 @@ class KBKeyLayoutEngine: NSObject {
             - sidePadding * 2
             - safeAreaInsets.left
             - safeAreaInsets.right
+
         var currentY = topPadding
-        SystemKeyboardMetrics.secondRowIndentFactor = keyboardWidth > keyboardHeight ? 0.42 : 0.5
-        
+
         for rowIndex in rows.indices {
 
             var row = rows[rowIndex]
 
+            // MARK: - 1. multipliers
             let multipliers: [CGFloat] = row.keys.map {
                 row.customWidthMultipliers[$0.keyId] ?? 1.0
             }
             let totalMultiplier = multipliers.reduce(0, +)
 
-            let isSecondRow = rowIndex == 1
-
-            // 🔥 spacing 由相邻 pair 决定（左右对称）
+            // MARK: - 2. spacing
             func spacingBetween(_ left: KBKey, _ right: KBKey) -> CGFloat {
                 if left.keyType == .shift || left.keyType == .backspace ||
                    right.keyType == .shift || right.keyType == .backspace {
@@ -74,42 +167,43 @@ class KBKeyLayoutEngine: NSObject {
                 return SystemKeyboardMetrics.normalSpacing
             }
 
-            let totalSpacing: CGFloat = row.keys.enumerated().reduce(0) { acc, pair in
-                let (i, key) = pair
-                guard i < row.keys.count - 1 else { return acc }
-                return acc + spacingBetween(key, row.keys[i + 1])
-            }
+            let totalSpacing: CGFloat = zip(row.keys, row.keys.dropFirst())
+                .reduce(0) { acc, pair in
+                    acc + spacingBetween(pair.0, pair.1)
+                }
 
-            // ① 先算 unitWidth（不含缩进）
+            // MARK: - 3. 初始 unitWidth（不含 inset）
             var unitWidth = (contentWidth - totalSpacing) / totalMultiplier
 
             if let maxKeyWidth, unitWidth > maxKeyWidth {
                 unitWidth = maxKeyWidth
             }
 
-            if unitWidth < 18 {
-                unitWidth = max(18, (contentWidth - totalSpacing) / CGFloat(row.keys.count))
-            }
+            unitWidth = max(unitWidth, 18)
 
-            // 🔥 ② 用 unitWidth 反推第二行的真实缩进
-            let secondRowInset: CGFloat = isSecondRow
-                ? unitWidth * SystemKeyboardMetrics.secondRowIndentFactor
-                : 0
+            // MARK: - 4. 计算 Row Insets（关键）
+            let leadingInsetFactor = row.leadingInset ?? row.horizontalInset
+            let trailingInsetFactor = row.trailingInset ?? row.horizontalInset
 
-            // 🔥 ③ 有效宽度重新计算（左右各扣一个 inset）
+            let leadingInset = unitWidth * leadingInsetFactor
+            let trailingInset = unitWidth * trailingInsetFactor
+
+            // MARK: - 5. 有效内容宽度
             let effectiveContentWidth =
                 contentWidth
                 - totalSpacing
-                - secondRowInset * 2
+                - leadingInset
+                - trailingInset
 
-            // 🔥 ④ 用有效宽度重新算 unitWidth（最终值）
+            // MARK: - 6. 最终 unitWidth
             unitWidth = effectiveContentWidth / totalMultiplier
 
+            // MARK: - 7. Layout keys
             var currentX =
                 sidePadding
                 + safeAreaInsets.left
-                + secondRowInset
-            
+                + leadingInset
+
             for i in row.keys.indices {
 
                 var key = row.keys[i]

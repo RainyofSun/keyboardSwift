@@ -30,15 +30,15 @@ class KBBaseKeyLayer: CALayer {
     private var _textLayer: CATextLayer?
     
     var keyRole: KBKeyRole = .character
-    var visualState: KBKeyVisualState = .normal {
-        didSet { applyStyle(animated: true) }
-    }
+    private var visualState: KBKeyVisualState = .normal
 
     var isDarkMode: Bool {
         traitCollection?.userInterfaceStyle == .dark
     }
 
     weak var traitCollection: UITraitCollection?
+    // 当前活跃 key 的 交互序列
+    public var currentInteractionSeq: Int = 0
     
     // MARK: - Init
 
@@ -56,7 +56,9 @@ class KBBaseKeyLayer: CALayer {
     override init(layer: Any) {
         super.init(layer: layer)
 
-        guard let other = layer as? KBBaseKeyLayer else { return }
+        guard let other = layer as? KBBaseKeyLayer else {
+            return
+        }
 
         // ⚠️ 复制“状态”，不是“结构”
         self.backgroundColor = other.backgroundColor
@@ -91,7 +93,7 @@ class KBBaseKeyLayer: CALayer {
     }
     
     // MARK: - Animation
-    // 按键按下动画
+    // 按键按下动画 -- 按键按下的瞬时态动画
     public func animateKeyPressDown() {
         // immediate transform with UIView animation for spring-friendly behavior on release
         UIView.animate(withDuration: 0.06, delay: 0, options: [.beginFromCurrentState], animations: {
@@ -134,6 +136,12 @@ class KBBaseKeyLayer: CALayer {
             }
             completion?()
         })
+    }
+    
+    // 键盘按键稳定态动画切换
+    public func setVisualState(_ state: KBKeyVisualState, animated: Bool) {
+        visualState = state
+        applyStyle(animated: animated)
     }
     
     // MARK: - Key
@@ -184,8 +192,8 @@ class KBBaseKeyLayer: CALayer {
         self._textLayer?.removeFromSuperlayer()
     }
     
-    // MARK: - Appearance
-    func applyStyle(animated: Bool) {
+    // MARK: - Appearance -- 稳定态
+    public func applyStyle(animated: Bool) {
 
         let bgColor = KBSystemKeyStyle.backgroundColor(
             role: keyRole,
