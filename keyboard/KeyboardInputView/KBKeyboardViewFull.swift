@@ -43,11 +43,19 @@ class KBKeyboardViewFull: UIView {
     private let characterLongPressDuration: TimeInterval = 0.45
     /////////////////////////////////////////////////////////////////////
 
+    /////////////////////////////////////////////////////////////////////
+    // 键盘状态
     public var enableClickSound: Bool = true
     private var keyboardType: KeyboardType = .letters
     // 记录屏幕尺寸变化
     private var lastLayoutSize: CGSize = .zero
     private var needsRelayout = true
+    // 是否需要恢复字母布局
+    private var shouldRestoreLettersOnAppear = false
+    // 键盘是否出现
+    private var didNotifyKeyboardAppear = false
+    /////////////////////////////////////////////////////////////////////
+    
     // 当前活跃 key 的交互序列
     private var interactionSequence: Int = 0
     
@@ -79,6 +87,7 @@ class KBKeyboardViewFull: UIView {
      •    touchesEnded 不再走单击 shift
      */
     private var shiftDidLongPress = false
+    private var didApplyInitialShift = false
     /////////////////////////////////////////////////////////////////////
     
     // MARK: - Init
@@ -106,8 +115,7 @@ class KBKeyboardViewFull: UIView {
         super.layoutSubviews()
 
         let newSize = bounds.size
-        guard newSize.width > 0, newSize.height > 0 else { return }
-
+        guard superview != nil, newSize.width > 0, newSize.height > 0 else { return }
         // 尺寸没变 + 没被标记 → 不重排
         if newSize == lastLayoutSize, !needsRelayout {
             return
@@ -118,6 +126,39 @@ class KBKeyboardViewFull: UIView {
 
         updateLayoutEngineSize()
         reloadLayout()
+        
+        if !didNotifyKeyboardAppear {
+            didNotifyKeyboardAppear = true
+            keyboardDidAppear()
+        }
+    }
+    
+    // MARK: - 键盘生命周期性方法
+    public func keyboardDidAppear() { --- 有问题
+        // 🔥 关键 1：恢复字母键盘
+        if shouldRestoreLettersOnAppear {
+            keyboardType = .letters
+            reloadLayout()
+            shouldRestoreLettersOnAppear = false
+        }
+        // 🔥 关键 2：应用系统级单次大写
+        applyInitialShiftStateIfNeeded()
+    }
+    
+    public func keyboardDidDisappear() {
+        // 1. Shift 语义重置
+        didApplyInitialShift = false
+        autoCapContext = .none
+        lastShiftTapTime = 0
+        shiftState = .lowercase
+
+        // 2. Layout 语义重置标记
+        if keyboardType != .letters {
+            shouldRestoreLettersOnAppear = true
+        }
+        
+        // 3. 键盘出现标志位重置
+        didNotifyKeyboardAppear = false
     }
 
     public func reloadLayout() {
@@ -388,8 +429,30 @@ private extension KBKeyboardViewFull {
     }
     
     func updateShiftKeyUI(animated: Bool) {
-        guard let shiftLayer = keyLayers["shift"] as? KBShiftKeyLayer else { return }
+        guard let shiftLayer = keyLayers["shift"] as? KBShiftKeyLayer else {
+            return
+        }
         shiftLayer.shiftState = shiftState
+        // 更新字母按键文字
+        updateCharacterKeysCase()
+    }
+    
+    func updateCharacterKeysCase() {
+        for key in keysFlat where key.keyType == .character {
+            guard let layer = keyLayers[key.keyId] as? KBCharacterKeyLayer else {
+                continue
+            }
+
+            let displayText: String
+            switch shiftState {
+            case .lowercase:
+                displayText = key.keyLabel.lowercased()
+            case .uppercase, .locked:
+                displayText = key.keyLabel.uppercased()
+            }
+
+            layer.updateDisplayedText(displayText)
+        }
     }
     
     func handleShiftTap(currentTime: TimeInterval = CACurrentMediaTime()) {
@@ -397,22 +460,23 @@ private extension KBKeyboardViewFull {
         switch shiftState {
 
         case .lowercase:
-            // 第一次点击
+            // 单击 → 单次大写
             shiftState = .uppercase
             lastShiftTapTime = currentTime
 
         case .uppercase:
             // 判断是否是双击
             if currentTime - lastShiftTapTime <= shiftDoubleTapInterval {
+                // 双击 → Caps Lock
                 shiftState = .locked
             } else {
-                // 超时 → 视为重新开始
-                shiftState = .uppercase
+                // 单击 → 回小写（✅ 关键）
+                shiftState = .lowercase
             }
             lastShiftTapTime = currentTime
 
         case .locked:
-            // Caps Lock 下再点一次 → 关闭
+            // 再点一次 → 关闭 Caps Lock
             shiftState = .lowercase
             lastShiftTapTime = 0
         }
@@ -437,6 +501,16 @@ private extension KBKeyboardViewFull {
         popupPresenter?.selectedCallback = {[weak self](text: String?) in
             self?.keyboardDelegate?.didSelectedKeyCap(capText: text ?? "")
         }
+    }
+    
+    func applyInitialShiftStateIfNeeded() {
+        guard !didApplyInitialShift else { return }
+
+        // 系统行为：首次进入字母键盘 = 单次大写
+        shiftState = .uppercase
+        updateShiftKeyUI(animated: false)
+
+        didApplyInitialShift = true
     }
     
     // Sync layers: create if missing, update frames and text

@@ -9,4 +9,7 @@ import UIKit
 
 class KBCharacterKeyLayer: KBBaseKeyLayer {
 
+    func updateDisplayedText(_ text: String) {
+        textLayer?.string = text
+    }
 }

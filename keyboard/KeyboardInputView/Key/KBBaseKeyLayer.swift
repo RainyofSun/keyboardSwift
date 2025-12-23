@@ -27,7 +27,7 @@ class KBBaseKeyLayer: CALayer {
     private let highlightLayer = CAGradientLayer()
     private let bottomShadeLayer = CAGradientLayer()
     private let separatorLayer = CALayer()
-    private var _textLayer: CATextLayer?
+    private(set) var textLayer: CATextLayer?
     
     var keyRole: KBKeyRole = .character
     private var visualState: KBKeyVisualState = .normal
@@ -147,7 +147,7 @@ class KBBaseKeyLayer: CALayer {
     // MARK: - Key
     // 创建 key 的文字
     public func createTextLayerIfNeeded(textLayerConfig: KBKeyTextLayerConfig) {
-        guard self._textLayer == nil else {
+        guard self.textLayer == nil else {
             return
         }
         
@@ -161,11 +161,11 @@ class KBBaseKeyLayer: CALayer {
         t.fontSize = textLayerConfig.keyFont.pointSize
         t.isWrapped = false
         self.addSublayer(t)
-        self._textLayer = t
+        self.textLayer = t
     }
     
     public func updateTextLayer(key: KBKey, config: KBKeyTextLayerConfig) {
-        guard let t = _textLayer else { return }
+        guard let t = textLayer else { return }
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -188,8 +188,8 @@ class KBBaseKeyLayer: CALayer {
     
     // 清理文字层
     public func clearTextLayer() {
-        self._textLayer?.removeAllAnimations()
-        self._textLayer?.removeFromSuperlayer()
+        self.textLayer?.removeAllAnimations()
+        self.textLayer?.removeFromSuperlayer()
     }
     
     // MARK: - Appearance -- 稳定态
