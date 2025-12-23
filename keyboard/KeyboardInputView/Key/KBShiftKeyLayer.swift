@@ -17,11 +17,14 @@ class KBShiftKeyLayer: KBBaseKeyLayer {
 
     private let symbolLayer = CAShapeLayer()
     private let lockIndicatorLayer = CAShapeLayer()
-    // 时间状态机, 判断大小写切换
-    private var lastShiftTapTime: TimeInterval = 0
-    private let doubleTapThreshold: TimeInterval = 0.28
     var shiftState: ShiftState = .lowercase {
-        didSet { updateAppearance(animated: true) }
+        didSet {
+            updateAppearance(animated: true)
+
+            if shiftState == .locked {
+                playCapsLockBreathing()
+            }
+        }
     }
 
     override init(layer: Any) {
@@ -59,32 +62,6 @@ class KBShiftKeyLayer: KBBaseKeyLayer {
         symbolLayer.strokeColor = color.cgColor
         symbolLayer.fillColor =
             shiftState == .lowercase ? UIColor.clear.cgColor : color.cgColor
-    }
-    
-    public func handleShiftTap(currentTime: TimeInterval = CACurrentMediaTime()) {
-
-        switch shiftState {
-
-        case .lowercase:
-            // 第一次点击
-            shiftState = .uppercase
-            lastShiftTapTime = currentTime
-
-        case .uppercase:
-            // 判断是否是双击
-            if currentTime - lastShiftTapTime <= doubleTapThreshold {
-                shiftState = .locked
-            } else {
-                // 超时 → 视为重新开始
-                shiftState = .uppercase
-            }
-            lastShiftTapTime = currentTime
-
-        case .locked:
-            // Caps Lock 下再点一次 → 关闭
-            shiftState = .lowercase
-            lastShiftTapTime = 0
-        }
     }
 }
 
@@ -231,6 +208,7 @@ private extension KBShiftKeyLayer {
     }
 }
 
+// MARK: - Animation
 private extension KBShiftKeyLayer {
     func animateLockIndicator(show: Bool) {
 
@@ -248,5 +226,21 @@ private extension KBShiftKeyLayer {
         lockIndicatorLayer.opacity = show ? 1.0 : 0.0
         lockIndicatorLayer.add(opacityAnim, forKey: "opacity")
         lockIndicatorLayer.add(scaleAnim, forKey: "scale")
+    }
+    
+    func playCapsLockBreathing() {
+
+        lockIndicatorLayer.removeAnimation(forKey: "capsBreath")
+
+        let anim = CABasicAnimation(keyPath: "opacity")
+        anim.fromValue = 0.4
+        anim.toValue = 1.0
+        anim.duration = 0.9
+        anim.autoreverses = true
+        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        anim.repeatCount = 2       // ❗ 系统只呼吸两次
+        anim.isRemovedOnCompletion = true
+
+        lockIndicatorLayer.add(anim, forKey: "capsBreath")
     }
 }
