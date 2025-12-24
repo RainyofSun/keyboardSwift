@@ -17,6 +17,11 @@ class KBPopupFollowAnimator: NSObject {
     func updateTarget(_ x: CGFloat) {
         targetOffsetX = x
     }
+    
+    func reset() {
+        currentOffsetX = 0    // 从键中心开始
+        targetOffsetX = 0
+    }
 
     func tick() -> CGFloat {
         currentOffsetX += (targetOffsetX - currentOffsetX) * smoothing

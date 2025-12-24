@@ -7,6 +7,26 @@
 
 import UIKit
 
+struct PopupGeometry {
+
+    let path: CGPath
+    let blurAlpha: CGFloat
+    let highlightOpacity: Float
+    let headOffsetX: CGFloat
+}
+
+final class KeyPopupView: UIView {
+
+    func apply(geometry: PopupGeometry) {
+        shapeLayer.path = geometry.path
+        blurView.alpha = geometry.blurAlpha
+        highlightLayer.opacity = geometry.highlightOpacity
+        shapeLayer.setAffineTransform(
+            CGAffineTransform(translationX: geometry.headOffsetX, y: 0)
+        )
+    }
+}
+
 public class KeyPopupView: UIView {
 
     // MARK: - Public
@@ -25,7 +45,6 @@ public class KeyPopupView: UIView {
     // MARK: - Private
     private let candidates: [CandidateItem]
     private let keyPosition: KeyPosition
-    private let measurer: KBCandidateWidthMeasurer
 
     private var layoutItems: [CandidateLayoutItem] = []
     private var textLayers: [CATextLayer] = []
@@ -44,11 +63,10 @@ public class KeyPopupView: UIView {
     init(candidates: [CandidateItem], keyPosition: KeyPosition) {
         self.candidates = candidates
         self.keyPosition = keyPosition
-        self.measurer = KBCandidateWidthMeasurer(font: font)
         super.init(frame: .zero)
 
         isOpaque = false
-        backgroundColor = .clear
+        backgroundColor = .white
 
         shapeLayer.fillColor = UIColor.systemBackground.cgColor
         shapeLayer.shadowColor = UIColor.black.cgColor

@@ -23,8 +23,9 @@ enum AutoCapContext {
 
 class KBKeyboardViewFull: UIView {
     weak open var keyboardDelegate: KeyboardViewProtocol?
-    // Public injection points
-    var popupPresenter: DefaultPopupPresenter?            // injected presenter for long-press alternatives
+    
+    // injected presenter for long-press alternatives
+    var popupPresenter: DefaultPopupPresenter = DefaultPopupPresenter()
     
     // Layout provider
     private var layoutEngine: KBKeyLayoutEngine!
@@ -202,7 +203,7 @@ class KBKeyboardViewFull: UIView {
                   key.alternatives?.isEmpty == false else { return }
 
             weakSelf.isLongPressActive = true
-            weakSelf.popupPresenter?.show(for: key, from: key.frame, in: weakSelf)
+            weakSelf.popupPresenter.show(for: key, from: key.frame, in: weakSelf)
         }
 
         if enableClickSound {
@@ -226,7 +227,7 @@ class KBKeyboardViewFull: UIView {
         
         if isLongPressActive {
             // route to popup for selection
-            popupPresenter?.update(at: p)
+            popupPresenter.update(at: p)
             return
         }
 
@@ -283,8 +284,8 @@ class KBKeyboardViewFull: UIView {
         }
 
         if isLongPressActive {
-            popupPresenter?.commit()
-            popupPresenter?.hide()
+            popupPresenter.commit()
+            popupPresenter.hide()
             isLongPressActive = false
             cleanupTouch()
             return
@@ -333,7 +334,7 @@ class KBKeyboardViewFull: UIView {
         shiftLongPressTimer?.invalidate()
         shiftLongPressTimer = nil
         
-        if isLongPressActive { popupPresenter?.hide(); isLongPressActive = false }
+        if isLongPressActive { popupPresenter.hide(); isLongPressActive = false }
         if let id = activeKeyID, let _active_key_layer = keyLayers[id] {
             _active_key_layer.animatePressUp {
                 // 仅恢复当前活跃的 key 的稳定态
@@ -485,8 +486,10 @@ private extension KBKeyboardViewFull {
         isMultipleTouchEnabled = false
         self.layoutEngine = KBKeyLayoutEngine(keyboardWidth: bounds.width, keyboardHeight: bounds.height, rowHeight: 52, keySpacing: 6, sidePadding: 6, topPadding: 8, bottomPadding: 8, maxKeyWidth: 120, provider: KBDefaultKeyboardProvider() as KeyboardLayoutProviding)
         
-        popupPresenter?.selectedCallback = {[weak self](text: String?) in
-            self?.keyboardDelegate?.didSelectedKeyCap(capText: text ?? "")
+        popupPresenter.selectedCallback = {[weak self](text: String?) in
+            if let _t = text {
+                self?.commitPopupText(_t)
+            }
         }
     }
     
@@ -564,6 +567,47 @@ private extension KBKeyboardViewFull {
         } else {
             layoutEngine.maxKeyWidth = nil
         }
+    }
+}
+
+// MARK: - Popup
+private extension KBKeyboardViewFull {
+    func commitPopupText(_ text: String) {
+        // 1. 提交文本（不走 performKeyAction）
+        commitText(text)
+
+        // 2. popup 模式下，处理 shift 语义
+        if shiftState == .uppercase {
+            shiftState = .lowercase
+            updateShiftKeyUI(animated: true)
+        }
+
+        // 3. 强制结束本轮触摸（🔥关键）
+        finishActiveKeyInteraction()
+    }
+    
+    func finishActiveKeyInteraction() {
+
+        // 1️⃣ 恢复当前 key 的视觉状态
+        if let id = activeKeyID,
+           let layer = keyLayers[id] {
+
+            layer.animatePressUp {
+                layer.setVisualState(.normal, animated: true)
+            }
+        }
+
+        // 2️⃣ 清理触摸状态
+        activeKeyID = nil
+        isLongPressActive = false
+        shiftDidLongPress = false
+
+        // 3️⃣ 终止 popup
+        popupPresenter.hide()
+
+        // 4️⃣ 终止定时器（兜底）
+        longPressTimer?.invalidate()
+        longPressTimer = nil
     }
 }
 

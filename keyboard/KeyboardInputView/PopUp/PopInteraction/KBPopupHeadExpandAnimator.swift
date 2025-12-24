@@ -18,6 +18,11 @@ class KBPopupHeadExpandAnimator: NSObject {
         target = pressing ? 1.0 : 0.0
     }
 
+    func reset() {
+        progress = 0          // 当前无扩展
+        target = 0            // 目标也为无扩展
+    }
+    
     func tick() -> CGFloat {
         progress += (target - progress) * smoothing
         return progress
