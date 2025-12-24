@@ -12,7 +12,6 @@ import AudioToolbox
 
 /*
  TODO:
- 1. 键盘退下。再次唤醒时，切回至字幕键盘
  2. 字幕键盘的长按 pop
  */
 
@@ -52,8 +51,6 @@ class KBKeyboardViewFull: UIView {
     private var needsRelayout = true
     // 是否需要恢复字母布局
     private var shouldRestoreLettersOnAppear = false
-    // 键盘是否出现
-    private var didNotifyKeyboardAppear = false
     /////////////////////////////////////////////////////////////////////
     
     // 当前活跃 key 的交互序列
@@ -87,7 +84,6 @@ class KBKeyboardViewFull: UIView {
      •    touchesEnded 不再走单击 shift
      */
     private var shiftDidLongPress = false
-    private var didApplyInitialShift = false
     /////////////////////////////////////////////////////////////////////
     
     // MARK: - Init
@@ -126,15 +122,10 @@ class KBKeyboardViewFull: UIView {
 
         updateLayoutEngineSize()
         reloadLayout()
-        
-        if !didNotifyKeyboardAppear {
-            didNotifyKeyboardAppear = true
-            keyboardDidAppear()
-        }
     }
     
     // MARK: - 键盘生命周期性方法
-    public func keyboardDidAppear() { --- 有问题
+    public func keyboardDidAppear() {
         // 🔥 关键 1：恢复字母键盘
         if shouldRestoreLettersOnAppear {
             keyboardType = .letters
@@ -147,7 +138,6 @@ class KBKeyboardViewFull: UIView {
     
     public func keyboardDidDisappear() {
         // 1. Shift 语义重置
-        didApplyInitialShift = false
         autoCapContext = .none
         lastShiftTapTime = 0
         shiftState = .lowercase
@@ -156,9 +146,6 @@ class KBKeyboardViewFull: UIView {
         if keyboardType != .letters {
             shouldRestoreLettersOnAppear = true
         }
-        
-        // 3. 键盘出现标志位重置
-        didNotifyKeyboardAppear = false
     }
 
     public func reloadLayout() {
@@ -208,14 +195,14 @@ class KBKeyboardViewFull: UIView {
             withTimeInterval: characterLongPressDuration,
             repeats: false
         ) { [weak self] _ in
-            guard let self = self else { return }
-            guard !self.shiftDidLongPress else { return }   // ✅ 关键熔断
-            guard let id = self.activeKeyID else { return }
-            guard let key = self.keysFlat.first(where: { $0.keyId == id }),
+            guard let weakSelf = self else { return }
+            guard !weakSelf.shiftDidLongPress else { return }   // ✅ 关键熔断
+            guard let id = weakSelf.activeKeyID else { return }
+            guard let key = weakSelf.keysFlat.first(where: { $0.keyId == id }),
                   key.alternatives?.isEmpty == false else { return }
 
-            self.isLongPressActive = true
-            self.popupPresenter?.show(for: key, from: key.frame, in: self)
+            weakSelf.isLongPressActive = true
+            weakSelf.popupPresenter?.show(for: key, from: key.frame, in: weakSelf)
         }
 
         if enableClickSound {
@@ -504,13 +491,9 @@ private extension KBKeyboardViewFull {
     }
     
     func applyInitialShiftStateIfNeeded() {
-        guard !didApplyInitialShift else { return }
-
         // 系统行为：首次进入字母键盘 = 单次大写
         shiftState = .uppercase
         updateShiftKeyUI(animated: false)
-
-        didApplyInitialShift = true
     }
     
     // Sync layers: create if missing, update frames and text

@@ -354,4 +354,21 @@ public class KeyPopupView: UIView {
             return headRect.maxX - horizontalPadding - contentWidth
         }
     }
+    
+    func resolvedAlternatives(for key: KBKey, shiftState: ShiftState) -> [String] {
+        guard let alts = key.alternatives else { return [] }
+
+        switch shiftState {
+        case .lowercase:
+            return alts.map { $0.text.lowercased() }
+
+        case .uppercase:
+            return alts.map {
+                $0.text.prefix(1).uppercased() + $0.text.dropFirst().lowercased()
+            }
+
+        case .locked:
+            return alts.map { $0.text.uppercased() }
+        }
+    }
 }

@@ -17,7 +17,7 @@ class KBShiftKeyLayer: KBBaseKeyLayer {
 
     private let symbolLayer = CAShapeLayer()
     private let lockIndicatorLayer = CAShapeLayer()
-    var shiftState: ShiftState = .lowercase {
+    var shiftState: ShiftState = .uppercase {
         didSet {
             updateAppearance(animated: true)
 

@@ -24,17 +24,26 @@ class ViewController: UIViewController {
         self.capView.backgroundColor = UIColor.red
         
         self.textFiled.inputView = self.keyboardInputView
+        self.textFiled.delegate = self
         self.keyboardInputView.keyboardDelegate = self
         
         DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 2, execute: {
             self.textFiled.becomeFirstResponder()
-            self.keyboardInputView.keyboardDidAppear()
         })
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
         self.textFiled.resignFirstResponder()
+    }
+}
+
+extension ViewController: UITextFieldDelegate {
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        self.keyboardInputView.keyboardDidAppear()
+    }
+    
+    func textFieldDidEndEditing(_ textField: UITextField) {
         self.keyboardInputView.keyboardDidDisappear()
     }
 }

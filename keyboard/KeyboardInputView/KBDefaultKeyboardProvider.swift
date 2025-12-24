@@ -9,6 +9,42 @@ import UIKit
 
 class KBDefaultKeyboardProvider: KeyboardLayoutProviding {
     
+    /// iOS system-like long press alternatives (English)
+    static let iOSLetterAlternatives: [String: [String]] = [
+
+        // MARK: - Vowels
+        "A": ["A", "À", "Á", "Â", "Ä", "Æ", "Ã", "Å", "Ā"],
+        "E": ["E", "È", "É", "Ê", "Ë", "Ē", "Ė", "Ę"],
+        "I": ["I", "Ì", "Í", "Î", "Ï", "Ī", "Į", "İ"],
+        "O": ["O", "Ò", "Ó", "Ô", "Ö", "Œ", "Õ", "Ø", "Ō"],
+        "U": ["U", "Ù", "Ú", "Û", "Ü", "Ū"],
+
+        // MARK: - Special consonants
+        "C": ["C", "Ç", "Ć", "Č"],
+        "N": ["N", "Ñ", "Ń"],
+        "S": ["S", "Ś", "Š"],
+        "Y": ["Y", "Ÿ"],
+        "Z": ["Z", "Ž", "Ź", "Ż"],
+        "L": ["L", "Ł"],
+        "D": ["D", "Ð"],
+        "T": ["T", "Þ"],
+
+        // MARK: - Rare / language-specific
+        "G": ["G", "Ğ"],
+        "H": ["H", "Ħ"],
+        "J": ["J", "Ĵ"],
+        "K": ["K", "Ķ"],
+        "R": ["R", "Ř"],
+        "B": ["B"],
+        "F": ["F"],
+        "M": ["M"],
+        "P": ["P"],
+        "Q": ["Q"],
+        "V": ["V"],
+        "W": ["W", "Ŵ"],
+        "X": ["X"]
+    ]
+    
     public func rows(for keyboardType: KeyboardType) -> [KBKeyRow] {
         switch keyboardType {
         case .letters:
@@ -27,14 +63,14 @@ class KBDefaultKeyboardProvider: KeyboardLayoutProviding {
         let row1 = KBKeyRow(
             keys: ["Q","W","E","R","T","Y","U","I","O","P"]
                 .enumerated()
-                .map { KBKey(keyId: "r1_\($0.offset)", keyLabel: $0.element) }
+                .map { KBKey(keyId: "r1_\($0.offset)", keyLabel: $0.element, alternatives: iOSLetterAlternatives[$0.element])}
         )
         
         // 🔥 Row 2: A–L（系统键盘风格：左右各缩进半个 key）
         let row2 = KBKeyRow(
             keys: ["A","S","D","F","G","H","J","K","L"]
                 .enumerated()
-                .map { KBKey(keyId: "r2_\($0.offset)", keyLabel: $0.element) },
+                .map { KBKey(keyId: "r2_\($0.offset)", keyLabel: $0.element, alternatives: iOSLetterAlternatives[$0.element])},
             horizontalInset: 0.5
         )
         
@@ -45,7 +81,7 @@ class KBDefaultKeyboardProvider: KeyboardLayoutProviding {
         
         row3Keys += ["Z","X","C","V","B","N","M"]
             .enumerated()
-            .map { KBKey(keyId: "r3_\($0.offset)", keyLabel: $0.element) }
+            .map { KBKey(keyId: "r3_\($0.offset)", keyLabel: $0.element, alternatives: iOSLetterAlternatives[$0.element]) }
         
         row3Keys.append(
             KBKey(keyId: "backspace", keyLabel: "⌫", keyType: .backspace)
