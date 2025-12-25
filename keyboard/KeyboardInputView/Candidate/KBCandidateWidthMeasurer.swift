@@ -9,13 +9,18 @@ import UIKit
 
 class KBCandidateWidthMeasurer: NSObject {
 
-    private let font: UIFont
+    private var font: UIFont = UIFont.systemFont(ofSize: 22, weight: .medium)
     private var cache: [String: CGFloat] = [:]
 
-    init(font: UIFont) {
+    init(font: UIFont = UIFont.systemFont(ofSize: 22, weight: .medium)) {
+        super.init()
         self.font = font
     }
 
+    func setFont(font: UIFont = UIFont.systemFont(ofSize: 22, weight: .medium)) {
+        self.font = font
+    }
+    
     func width(for text: String) -> CGFloat {
         if let cached = cache[text] {
             return cached
@@ -32,7 +37,7 @@ class KBCandidateWidthMeasurer: NSObject {
     func totalWidth(
         items: [CandidateItem],
         itemSpacing: CGFloat,
-        horizontalPadding: CGFloat
+        contentInset: UIEdgeInsets
     ) -> CGFloat {
 
         guard !items.isEmpty else { return 0 }
@@ -43,6 +48,6 @@ class KBCandidateWidthMeasurer: NSObject {
 
         let spacing = CGFloat(items.count - 1) * itemSpacing
 
-        return textWidth + spacing + horizontalPadding * 2
+        return textWidth + spacing + contentInset.left + contentInset.right
     }
 }

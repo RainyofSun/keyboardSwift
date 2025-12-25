@@ -18,13 +18,6 @@ protocol KeyboardLayoutProviding {
     func rows(for keyboardType: KeyboardType) -> [KBKeyRow]
 }
 
-protocol PopupPresenter: AnyObject {
-    func show(for key: KBKey, from frame: CGRect, in parent: UIView)
-    func update(at point: CGPoint)
-    func commit()
-    func hide()
-}
-
 protocol KeyboardViewProtocol: AnyObject {
     func didSelectedKeyCap(capText: String)
     func deleteText()

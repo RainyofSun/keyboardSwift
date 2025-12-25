@@ -1,5 +1,5 @@
 //
-//  KBKeyboardViewFull.swift
+//  KBKeyboardView.swift
 //  keyboard
 //
 //  Created by 一刻 on 2025/12/8.
@@ -21,7 +21,7 @@ enum AutoCapContext {
     case afterPunctuation
 }
 
-class KBKeyboardViewFull: UIView {
+class KBKeyboardView: UIView {
     weak open var keyboardDelegate: KeyboardViewProtocol?
     
     // Layout provider
@@ -190,9 +190,9 @@ class KBKeyboardViewFull: UIView {
             // 创建 KBPopupSession 时，contentWidth 怎么给？
             let session = KBPopupSession(
                 key: key,
-                candidates: key.alternatives ?? [],
                 keyRect: key.frame,
                 position: key.keyLocation,
+                parantView: self,
                 baseRect: bounds,
                 safeAreaInsets: safeAreaInsets,
                 traitCollection: self.traitCollection
@@ -352,7 +352,7 @@ class KBKeyboardViewFull: UIView {
 }
 
 // MARK: - Key actions
-private extension KBKeyboardViewFull {
+private extension KBKeyboardView {
     func performKeyAction(_ key: KBKey) {
         switch key.keyType {
         case .character where ".!?".contains(key.keyLabel):
@@ -480,7 +480,7 @@ private extension KBKeyboardViewFull {
     }
 }
 
-private extension KBKeyboardViewFull {
+private extension KBKeyboardView {
     func commonInit() {
         backgroundColor = .clear
         isOpaque = false
@@ -572,7 +572,7 @@ private extension KBKeyboardViewFull {
 }
 
 // MARK: - Popup
-private extension KBKeyboardViewFull {
+private extension KBKeyboardView {
     func commitPopupText(_ text: String) {
         // 1. 提交文本（不走 performKeyAction）
         commitText(text)
@@ -608,7 +608,7 @@ private extension KBKeyboardViewFull {
 }
 
 // MARK: - Key feedback
-private extension KBKeyboardViewFull {
+private extension KBKeyboardView {
     func feedbackRole(for keyId: String) -> KeyFeedbackRole {
         guard let key = keysFlat.first(where: { $0.keyId == keyId }) else {
             return .character

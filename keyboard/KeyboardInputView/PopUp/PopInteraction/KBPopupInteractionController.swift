@@ -13,40 +13,17 @@ import UIKit
  2.    长按进度（time → progress）
  3.    生成几何数据（path / alpha / highlight）
  */
-final class KBPopupInteractionController: KBPopupGestureDriver {
+final class KBPopupInteractionController {
     
     private var session: KBPopupSession?
     
     private let followAnimator = KBPopupFollowAnimator()
     private let expandAnimator = KBPopupHeadExpandAnimator()
-    private let measurer = KBCandidateWidthMeasurer(
-        font: UIFont.systemFont(ofSize: 22, weight: .medium)
-    )
+    private let measurer = KBCandidateWidthMeasurer()
     
-    func beginPopup(session: KBPopupSession) {
-        begin(session: session)
-    }
-    
-    func updatePopupDrag(point: CGPoint) {
-        updateDrag(point: point)
-    }
-    
-    func commitPopup() {
-        
-    }
-    
-    func cancelPopup() {
-        end()
-    }
-    
-    func setLongPressing(_ pressing: Bool) {
-        expandAnimator.setLongPressing(pressing)
-    }
-}
-
-private extension KBPopupInteractionController {
     func begin(session: KBPopupSession) {
         self.session = session
+        measurer.setFont(font: session.itemFont)
         expandAnimator.reset()
         followAnimator.reset()
     }
@@ -57,6 +34,10 @@ private extension KBPopupInteractionController {
     
     func end() {
         session = nil
+    }
+    
+    func setLongPressing(_ pressing: Bool) {
+        expandAnimator.setLongPressing(pressing)
     }
     
     func tick() -> PopupGeometry? {
@@ -73,14 +54,14 @@ private extension KBPopupInteractionController {
         
         // 内容宽度
         let contentWidth = measurer.totalWidth(
-            items: _session.candidates,
-            itemSpacing: 8,
-            horizontalPadding: 12
+            items: _session.key.alternatives ?? [],
+            itemSpacing: _session.itemSpacing,
+            contentInset: _session.contentInset
         )
         
         let baseExpand = baseHeadExpand(
             position: _session.position,
-            candidateCount: _session.candidates.count
+            candidateCount: _session.key.alternatives?.count ?? 0
         )
         
         let contentExpand = contentDrivenExpand(

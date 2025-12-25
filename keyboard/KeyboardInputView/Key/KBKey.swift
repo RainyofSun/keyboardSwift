@@ -79,7 +79,7 @@ struct CandidateItem {
 }
 
 // 候选词布局模型
-struct CandidateLayoutItem {
+public struct CandidateLayoutItem {
     let text: String
     let frame: CGRect
 }

@@ -53,6 +53,29 @@ import AVFoundation
    removeView →
    callback
  */
+
+/*
+ PopupPresenter ——【导演 / 生命周期控制者】
+
+ 它解决的是：
+
+ “我要把 popup 从 0 演到 1，再演到结束”
+
+ 它关心的是：
+     •    View 创建 / 移除
+     •    CADisplayLink
+     •    InteractionController 生命周期
+     •    callback
+     •    haptic / selection feedback
+     •    session 生命周期
+ */
+protocol PopupPresenter: AnyObject {
+    func show(for session: KBPopupSession)
+    func update(at point: CGPoint)
+    func commit()
+    func hide()
+}
+
 final class DefaultPopupPresenter: PopupPresenter {
 
     // MARK: - Core
@@ -69,17 +92,9 @@ final class DefaultPopupPresenter: PopupPresenter {
     // MARK: - Output
     var selectedCallback: ((String?) -> Void)?
     
-    func show(for key: KBKey, from frame: CGRect, in parent: UIView) {
+    func show(for session: KBPopupSession) {
 
-        guard let alts = key.alternatives else { return }
-
-        let session = KBPopupSession(
-            key: key,
-            candidates: alts,
-            keyRect: frame,
-            position: key.keyLocation,
-            baseRect: parent.bounds,
-        )
+        guard let alts = session.key.alternatives else { return }
 
         self.session = session
 
@@ -87,12 +102,10 @@ final class DefaultPopupPresenter: PopupPresenter {
         interactionController.begin(session: session)
 
         // 2️⃣ 创建 View（只负责画）
-        let popup = KeyPopupView(
-            candidates: alts,
-            keyPosition: session.position
-        )
-        parent.addSubview(popup)
-        popup.layout(pointingTo: frame, in: parent)
+        let popup = KeyPopupView(candidates: alts, keyPosition: session.position, itemFont: session.itemFont)
+        session.parantView.addSubview(popup)
+        let rectTuple = KBPopupGeometryResolver.resolve(keyRect: session.keyRect, session: session, popupView: popup, keyboardView: session.parantView)
+        popup.layout(pointingTo: rectTuple.keyRect, popRect: rectTuple.popRect, candidateLayouts: rectTuple.candidateLayouts, in: session.parantView)
         popup.animateAppear()
 
         popupView = popup
@@ -125,11 +138,7 @@ final class DefaultPopupPresenter: PopupPresenter {
 
 extension DefaultPopupPresenter: KBPopupGestureDriver {
     func beginPopup(session: KBPopupSession) {
-        show(
-            for: session.key,
-            from: session.keyRect,
-            in: /* keyboard view */
-        )
+        show(for: session)
     }
 
     func updatePopupDrag(point: CGPoint) {
@@ -145,9 +154,7 @@ extension DefaultPopupPresenter: KBPopupGestureDriver {
     }
 
     func setLongPressing(_ pressing: Bool) {
-        interactionController
-            .expandAnimator
-            .setLongPressing(pressing)
+        interactionController.setLongPressing(pressing)
     }
 }
 

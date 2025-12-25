@@ -28,6 +28,19 @@ enum KBPopupGestureState {
     case cancelling               // 手势取消 / 滑出
 }
 
+/*
+ KBPopupGestureDriver ——【意图接口 / 命令接口】
+
+ 它解决的是这件事：
+
+ “手势状态机决定：现在该 show / update / commit / cancel popup 了”
+
+ 它不关心：
+     •    View 怎么画
+     •    CADisplayLink
+     •    path、geometry
+     •    animator 细节
+ */
 protocol KBPopupGestureDriver: AnyObject {
     func beginPopup(session: KBPopupSession)
     func updatePopupDrag(point: CGPoint)
