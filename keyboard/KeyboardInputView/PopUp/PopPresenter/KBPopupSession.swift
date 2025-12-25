@@ -24,7 +24,6 @@ struct KBPopupSession {
     let position: KeyPosition
 
     // 预计算
-    let contentWidth: CGFloat
     let baseRect: CGRect
 
     // 环境

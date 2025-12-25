@@ -24,9 +24,6 @@ enum AutoCapContext {
 class KBKeyboardViewFull: UIView {
     weak open var keyboardDelegate: KeyboardViewProtocol?
     
-    // injected presenter for long-press alternatives
-    var popupPresenter: DefaultPopupPresenter = DefaultPopupPresenter()
-    
     // Layout provider
     private var layoutEngine: KBKeyLayoutEngine!
     // Runtime storage
@@ -37,10 +34,9 @@ class KBKeyboardViewFull: UIView {
     // Touch state
     private var activeKeyID: String? = nil
     /////////////////////////////////////////////////////////////////////
-    // 长按 popUp
-    private var longPressTimer: Timer?
-    private var isLongPressActive = false
-    private let characterLongPressDuration: TimeInterval = 0.45
+    // injected presenter for long-press alternatives
+    private lazy var popupPresenter = DefaultPopupPresenter()
+    private lazy var popupStateMachine = KBPopupGestureStateMachine(driver: popupPresenter)
     /////////////////////////////////////////////////////////////////////
 
     /////////////////////////////////////////////////////////////////////
@@ -160,9 +156,11 @@ class KBKeyboardViewFull: UIView {
 
     // MARK: - Touch handling & animations
     public override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let p = touches.first?.location(in: self), let id = keyId(at: p) else { return }
+        guard let p = touches.first?.location(in: self), let id = keyId(at: p), let key = keysFlat.first(where: { $0.keyId == id }) else {
+            return
+        }
+        
         activeKeyID = id
-        isLongPressActive = false
         shiftDidLongPress = false
         
         // press visual
@@ -173,8 +171,8 @@ class KBKeyboardViewFull: UIView {
             _key_layer.currentInteractionSeq = interactionSequence
         }
 
-        if let _key = self.keysFlat.first(where: { $0.keyId == id }), _key.keyType == .shift {
-
+        if key.keyType == .shift {
+            shiftLongPressTimer?.invalidate()
             shiftLongPressTimer = Timer.scheduledTimer(
                 withTimeInterval: shiftLongPressDuration,
                 repeats: false
@@ -183,27 +181,27 @@ class KBKeyboardViewFull: UIView {
 
                 self.shiftDidLongPress = true          // ✅ 必须
                 self.shiftState = .locked
-                self.longPressTimer?.invalidate()
-                self.longPressTimer = nil
                 self.updateShiftKeyUI(animated: true)
                 KBKeyboardHapticEngine.shared.trigger(for: .capsLock)
             }
         }
         
-        // schedule long press
-        longPressTimer?.invalidate()
-        longPressTimer = Timer.scheduledTimer(
-            withTimeInterval: characterLongPressDuration,
-            repeats: false
-        ) { [weak self] _ in
-            guard let weakSelf = self else { return }
-            guard !weakSelf.shiftDidLongPress else { return }   // ✅ 关键熔断
-            guard let id = weakSelf.activeKeyID else { return }
-            guard let key = weakSelf.keysFlat.first(where: { $0.keyId == id }),
-                  key.alternatives?.isEmpty == false else { return }
+        if key.keyType == .character {
+            // 创建 KBPopupSession 时，contentWidth 怎么给？
+            let session = KBPopupSession(
+                key: key,
+                candidates: key.alternatives ?? [],
+                keyRect: key.frame,
+                position: key.keyLocation,
+                baseRect: bounds,
+                safeAreaInsets: safeAreaInsets,
+                traitCollection: self.traitCollection
+            )
 
-            weakSelf.isLongPressActive = true
-            weakSelf.popupPresenter.show(for: key, from: key.frame, in: weakSelf)
+            popupStateMachine.touchBegan(
+                at: p,
+                session: session
+            )
         }
 
         if enableClickSound {
@@ -213,7 +211,13 @@ class KBKeyboardViewFull: UIView {
     }
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let p = touches.first?.location(in: self) else { return }
+        guard let p = touches.first?.location(in: self) else {
+            return
+        }
+        // pop 状态机执行
+        popupStateMachine.touchMoved(to: p)
+        
+        // shift 长按手指移出
         if let active = activeKeyID,
            let activeKey = keysFlat.first(where: { $0.keyId == active }),
            activeKey.keyType == .shift {
@@ -224,14 +228,12 @@ class KBKeyboardViewFull: UIView {
                 shiftLongPressTimer = nil
             }
         }
-        
-        if isLongPressActive {
-            // route to popup for selection
-            popupPresenter.update(at: p)
+
+        // 普通滑动换键，只在 popup idle 时执行
+        guard popupStateMachine.state == .idle else {
             return
         }
 
-        // update active key when sliding
         if let id = keyId(at: p) {
             if id != activeKeyID {
                 // previous key release visual
@@ -272,8 +274,6 @@ class KBKeyboardViewFull: UIView {
     }
 
     public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        longPressTimer?.invalidate()
-        longPressTimer = nil
 
         shiftLongPressTimer?.invalidate()
         shiftLongPressTimer = nil
@@ -282,18 +282,19 @@ class KBKeyboardViewFull: UIView {
             cleanupTouch()
             return
         }
-
-        if isLongPressActive {
-            popupPresenter.commit()
-            popupPresenter.hide()
-            isLongPressActive = false
-            cleanupTouch()
-            return
-        }
+        
+        // popup 状态机
+        popupStateMachine.touchEnded(at: p)
 
         if shiftDidLongPress {
             lastShiftTapTime = 0
+            shiftDidLongPress = false
             cleanupTouch()
+            return
+        }
+        
+        // popup 仍在活跃状态，则不再执行普通点击
+        guard popupStateMachine.state == .idle else {
             return
         }
         
@@ -328,13 +329,13 @@ class KBKeyboardViewFull: UIView {
     }
 
     public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        longPressTimer?.invalidate()
-        longPressTimer = nil
         
         shiftLongPressTimer?.invalidate()
         shiftLongPressTimer = nil
         
-        if isLongPressActive { popupPresenter.hide(); isLongPressActive = false }
+        // pop 状态机执行取消
+        popupStateMachine.touchCancelled()
+        
         if let id = activeKeyID, let _active_key_layer = keyLayers[id] {
             _active_key_layer.animatePressUp {
                 // 仅恢复当前活跃的 key 的稳定态
@@ -599,15 +600,10 @@ private extension KBKeyboardViewFull {
 
         // 2️⃣ 清理触摸状态
         activeKeyID = nil
-        isLongPressActive = false
         shiftDidLongPress = false
 
         // 3️⃣ 终止 popup
         popupPresenter.hide()
-
-        // 4️⃣ 终止定时器（兜底）
-        longPressTimer?.invalidate()
-        longPressTimer = nil
     }
 }
 

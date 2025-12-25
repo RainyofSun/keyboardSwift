@@ -15,18 +15,6 @@ struct PopupGeometry {
     let headOffsetX: CGFloat
 }
 
-final class KeyPopupView: UIView {
-
-    func apply(geometry: PopupGeometry) {
-        shapeLayer.path = geometry.path
-        blurView.alpha = geometry.blurAlpha
-        highlightLayer.opacity = geometry.highlightOpacity
-        shapeLayer.setAffineTransform(
-            CGAffineTransform(translationX: geometry.headOffsetX, y: 0)
-        )
-    }
-}
-
 public class KeyPopupView: UIView {
 
     // MARK: - Public
@@ -109,6 +97,15 @@ public class KeyPopupView: UIView {
         updateShapePath(animated: false)
     }
 
+    func apply(geometry: PopupGeometry) {
+        shapeLayer.path = geometry.path
+        blurView.alpha = geometry.blurAlpha
+        highlightLayer.opacity = geometry.highlightOpacity
+        shapeLayer.setAffineTransform(
+            CGAffineTransform(translationX: geometry.headOffsetX, y: 0)
+        )
+    }
+    
     // MARK: - Candidate Layout
     private func layoutCandidates() {
 

@@ -13,7 +13,7 @@ import UIKit
  2.    长按进度（time → progress）
  3.    生成几何数据（path / alpha / highlight）
  */
-final class KBPopupInteractionController {
+final class KBPopupInteractionController: KBPopupGestureDriver {
     
     private var session: KBPopupSession?
     
@@ -23,6 +23,28 @@ final class KBPopupInteractionController {
         font: UIFont.systemFont(ofSize: 22, weight: .medium)
     )
     
+    func beginPopup(session: KBPopupSession) {
+        begin(session: session)
+    }
+    
+    func updatePopupDrag(point: CGPoint) {
+        updateDrag(point: point)
+    }
+    
+    func commitPopup() {
+        
+    }
+    
+    func cancelPopup() {
+        end()
+    }
+    
+    func setLongPressing(_ pressing: Bool) {
+        expandAnimator.setLongPressing(pressing)
+    }
+}
+
+private extension KBPopupInteractionController {
     func begin(session: KBPopupSession) {
         self.session = session
         expandAnimator.reset()

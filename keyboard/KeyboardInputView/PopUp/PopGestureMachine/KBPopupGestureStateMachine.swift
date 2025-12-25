@@ -6,7 +6,21 @@
 //
 
 import UIKit
-
+/*
+ KBKeyboardViewFull
+    │
+    │  touchesBegan / Moved / Ended
+    ▼
+ KBPopupGestureStateMachine        ←【新加：交互意图层】
+    │
+    │  beginPopup / update / commit / cancel
+    ▼
+ DefaultPopupPresenter             ←【导演 / 生命周期层】
+    │
+    │  begin / tick / apply
+    ▼
+ KBPopupInteractionController      ←【几何 & 动画内核】
+ */
 enum KBPopupGestureState {
     case idle                     // 没有任何触摸
     case pressing                 // 已按下，但未达到长按
@@ -43,6 +57,65 @@ class KBPopupGestureStateMachine: NSObject {
     // MARK: - Init
     init(driver: KBPopupGestureDriver) {
         self.driver = driver
+    }
+}
+
+extension KBPopupGestureStateMachine {
+    
+    func touchBegan(
+        at point: CGPoint,
+        session: KBPopupSession
+    ) {
+        guard state == .idle else { return }
+        
+        self.state = .pressing
+        self.session = session
+        self.initialPoint = point
+        self.pressBeganTime = CACurrentMediaTime()
+        
+        startLongPressTimer()
+    }
+    
+    func touchMoved(to point: CGPoint) {
+        switch state {
+            
+        case .pressing:
+            // 超出移动容差 → 认为是普通滑动 / 取消长按
+            if distance(point, initialPoint) > moveTolerance {
+                cancelLongPress()
+                state = .idle
+            }
+            
+        case .popupActive:
+            driver?.updatePopupDrag(point: point)
+            
+        default:
+            break
+        }
+    }
+    
+    func touchEnded(at point: CGPoint) {
+        switch state {
+            
+        case .pressing:
+            // 没到长按时间 → 普通 tap
+            cancelLongPress()
+            state = .idle
+            
+        case .popupActive:
+            driver?.commitPopup()
+            driver?.setLongPressing(false)
+            cleanup()
+            
+        default:
+            cleanup()
+        }
+    }
+    
+    func touchCancelled() {
+        driver?.cancelPopup()
+        driver?.setLongPressing(false)
+        cleanup()
     }
 }
 

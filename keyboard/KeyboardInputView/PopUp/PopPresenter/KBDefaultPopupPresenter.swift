@@ -10,7 +10,20 @@ import AVFoundation
 
 /*
  KBKeyboardViewFull
-  └─ PopupPresenter (接口)
+    │
+    │  touchesBegan / Moved / Ended
+    ▼
+ KBPopupGestureStateMachine        ←【新加：交互意图层】
+    │
+    │  beginPopup / update / commit / cancel
+    ▼
+ DefaultPopupPresenter             ←【导演 / 生命周期层】
+    │
+    │  begin / tick / apply
+    ▼
+ KBPopupInteractionController      ←【几何 & 动画内核】
+ 
+ PopupPresenter (接口)
       └─ DefaultPopupPresenter            🎬 导演
           ├─ PopupSession                 📦 数据快照
           ├─ PopupInteractionController   🧠 交互/几何引擎
@@ -65,7 +78,7 @@ final class DefaultPopupPresenter: PopupPresenter {
             candidates: alts,
             keyRect: frame,
             position: key.keyLocation,
-            baseRect: parent.bounds
+            baseRect: parent.bounds,
         )
 
         self.session = session
@@ -107,6 +120,34 @@ final class DefaultPopupPresenter: PopupPresenter {
 
     func hide() {
         cleanup()
+    }
+}
+
+extension DefaultPopupPresenter: KBPopupGestureDriver {
+    func beginPopup(session: KBPopupSession) {
+        show(
+            for: session.key,
+            from: session.keyRect,
+            in: /* keyboard view */
+        )
+    }
+
+    func updatePopupDrag(point: CGPoint) {
+        update(at: point)
+    }
+
+    func commitPopup() {
+        commit()
+    }
+
+    func cancelPopup() {
+        hide()
+    }
+
+    func setLongPressing(_ pressing: Bool) {
+        interactionController
+            .expandAnimator
+            .setLongPressing(pressing)
     }
 }
 
