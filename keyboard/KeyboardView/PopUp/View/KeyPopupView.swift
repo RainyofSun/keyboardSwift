@@ -35,8 +35,6 @@ public class KeyPopupView: UIView {
     private let highlightLayer = CAShapeLayer()
 
     private let highlightInset = UIEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
-
-    private var keyRect: CGRect = .zero
     
     // MARK: - Init
     init(candidates: [CandidateItem], keyPosition: KeyPosition, itemFont font: UIFont) {
@@ -64,11 +62,8 @@ public class KeyPopupView: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // MARK: - Layout
-    public func layout(pointingTo target: CGRect, popRect pRect: CGRect, candidateLayouts: [CandidateLayoutItem], in parent: UIView) {
-
-        keyRect = target
-        frame = pRect
+    // MARK: - Layout    
+    public func layout(candidateLayouts: [CandidateLayoutItem]) {
         layoutItems.removeAll()
         layoutItems.append(contentsOf: candidateLayouts)
         

@@ -12,17 +12,29 @@ import AudioToolbox
 
 /*
  TODO:
- 2. 字幕键盘的长按 pop
+ 1. 将按键的创建 抽取到KBKeyContainerView中
  */
-
 // 句首状态机
 enum AutoCapContext {
     case none
     case afterPunctuation
 }
-
+/*
+ KBKeyboardView
+ ├─ keyContainerView          // 按键（可响应事件）
+ │
+ ├─ popupContainerView        // 🔥 所有 popup 的舞台（不响应事件）
+ │   ├─ candidateLayer        // 候选词 popup
+ │   ├─ emojiLayer            // emoji popup
+ │   ├─ menuLayer             // 菜单 / 工具 popup
+ │
+ └─ overlayContainerView      // debug / guide / 可视化层
+ */
 class KBKeyboardView: UIView {
     weak open var keyboardDelegate: KeyboardViewProtocol?
+    
+    let popupContainerView = KBPopupContainerView()
+    let debugOverlayContainerView = KBDebugOverlayContainerView()
     
     // Layout provider
     private var layoutEngine: KBKeyLayoutEngine!
@@ -35,7 +47,7 @@ class KBKeyboardView: UIView {
     private var activeKeyID: String? = nil
     /////////////////////////////////////////////////////////////////////
     // injected presenter for long-press alternatives
-    private lazy var popupPresenter = DefaultPopupPresenter()
+    private lazy var popupPresenter = DefaultPopupPresenter(popupContainerView: popupContainerView)
     private lazy var popupStateMachine = KBPopupGestureStateMachine(driver: popupPresenter)
     /////////////////////////////////////////////////////////////////////
 
@@ -87,6 +99,7 @@ class KBKeyboardView: UIView {
     override init(frame: CGRect = .zero) {
         super.init(frame: frame)
         commonInit()
+        setupHierarchy()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -192,8 +205,7 @@ class KBKeyboardView: UIView {
                 key: key,
                 keyRect: key.frame,
                 position: key.keyLocation,
-                parantView: self,
-                baseRect: bounds,
+                keyboardBounds: bounds,
                 safeAreaInsets: safeAreaInsets,
                 traitCollection: self.traitCollection
             )
@@ -480,6 +492,12 @@ private extension KBKeyboardView {
     }
 }
 
+extension KBKeyboardView: KBPopupDebugSink {
+    func update(snapshot: KBPopupDebugSnapshot) {
+        debugOverlayContainerView.updateSnapshot(snaps: snapshot)
+    }
+}
+
 private extension KBKeyboardView {
     func commonInit() {
         backgroundColor = .clear
@@ -487,12 +505,58 @@ private extension KBKeyboardView {
         isMultipleTouchEnabled = false
         self.layoutEngine = KBKeyLayoutEngine(keyboardWidth: bounds.width, keyboardHeight: bounds.height, rowHeight: 52, keySpacing: 6, sidePadding: 6, topPadding: 8, bottomPadding: 8, maxKeyWidth: 120, provider: KBDefaultKeyboardProvider() as KeyboardLayoutProviding)
         
+        popupPresenter.debugSink = self
         popupPresenter.selectedCallback = {[weak self](text: String?) in
             if let _t = text {
                 self?.commitPopupText(_t)
             }
         }
     }
+    
+    func setupHierarchy() {
+
+//        addSubview(keyContainerView)
+        addSubview(popupContainerView)
+        addSubview(debugOverlayContainerView)
+
+//        keyContainerView.frame = bounds
+        popupContainerView.frame = bounds
+        debugOverlayContainerView.frame = bounds
+
+//        keyContainerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        popupContainerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        debugOverlayContainerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        
+        debugOverlayContainerView.addPopupDebugOverlayView()
+    }
+    
+    // TODO: 待结构优化项 -- 不可删
+//    func bindKeyContainer() {
+//        keyContainerView.popupTouchHandler = { [weak self] event in
+//            guard let self else { return }
+//            switch event {
+//            case .began(let point, let key):
+//                let session = KBPopupSession(
+//                    key: key,
+//                    keyRect: key.frame,
+//                    position: key.keyLocation,
+//                    keyboardBounds: self.bounds,
+//                    safeAreaInsets: self.safeAreaInsets,
+//                    traitCollection: self.traitCollection
+//                )
+//                self.popupStateMachine.touchBegan(at: point, session: session)
+//
+//            case .moved(let point):
+//                self.popupStateMachine.touchMoved(to: point)
+//
+//            case .ended(let point):
+//                self.popupStateMachine.touchEnded(at: point)
+//
+//            case .cancelled:
+//                self.popupStateMachine.touchCancelled()
+//            }
+//        }
+//    }
     
     func applyInitialShiftStateIfNeeded() {
         // 系统行为：首次进入字母键盘 = 单次大写
