@@ -33,6 +33,7 @@ enum AutoCapContext {
 class KBKeyboardView: UIView {
     weak open var keyboardDelegate: KeyboardViewProtocol?
     
+    let keyContainerView = KBKeyContainerView()
     let popupContainerView = KBPopupContainerView()
     let debugOverlayContainerView = KBDebugOverlayContainerView()
     
@@ -41,10 +42,7 @@ class KBKeyboardView: UIView {
     // Runtime storage
     private var rows: [KBKeyRow] = []
     private var keysFlat: [KBKey] = []
-    private var keyLayers: [String: KBBaseKeyLayer] = [:]       // id -> key layer
 
-    // Touch state
-    private var activeKeyID: String? = nil
     /////////////////////////////////////////////////////////////////////
     // injected presenter for long-press alternatives
     private lazy var popupPresenter = DefaultPopupPresenter(popupContainerView: popupContainerView)
@@ -61,9 +59,6 @@ class KBKeyboardView: UIView {
     // 是否需要恢复字母布局
     private var shouldRestoreLettersOnAppear = false
     /////////////////////////////////////////////////////////////////////
-    
-    // 当前活跃 key 的交互序列
-    private var interactionSequence: Int = 0
     
     /////////////////////////////////////////////////////////////////////
     // shift 键状态机
@@ -82,17 +77,7 @@ class KBKeyboardView: UIView {
     lowercase
     */
     private var shiftState: ShiftState = .lowercase
-    private var lastShiftTapTime: CFTimeInterval = 0
-    private let shiftDoubleTapInterval: CFTimeInterval = 0.28
-    private var shiftLongPressTimer: Timer?
-    private let shiftLongPressDuration: TimeInterval = 0.32
     private var autoCapContext: AutoCapContext = .none
-    /*
-     长按优先级 > 单击
-     •    一旦触发 long press
-     •    touchesEnded 不再走单击 shift
-     */
-    private var shiftDidLongPress = false
     /////////////////////////////////////////////////////////////////////
     
     // MARK: - Init
@@ -149,217 +134,94 @@ class KBKeyboardView: UIView {
     public func keyboardDidDisappear() {
         // 1. Shift 语义重置
         autoCapContext = .none
-        lastShiftTapTime = 0
         shiftState = .lowercase
-
+        
         // 2. Layout 语义重置标记
         if keyboardType != .letters {
             shouldRestoreLettersOnAppear = true
         }
+        
+        // 3. 清理旧状态
+        keyContainerView.cleanup(resetShiftTap: true)
     }
-
-    public func reloadLayout() {
-        guard layoutEngine != nil else {
-            return
-        }
-        rows = layoutEngine.layout(for: self.keyboardType)
+    
+    func reloadLayout() {
+        rows = layoutEngine.layout(for: keyboardType)
         keysFlat = rows.flatMap { $0.keys }
-        syncLayersWithKeys()
+        keyContainerView.updateKeys(keysFlat)
     }
+}
 
-    // MARK: - Touch handling & animations
-    public override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let p = touches.first?.location(in: self), let id = keyId(at: p), let key = keysFlat.first(where: { $0.keyId == id }) else {
-            return
-        }
-        
-        activeKeyID = id
-        shiftDidLongPress = false
-        
-        // press visual
-        if let _key_layer = keyLayers[id] {
-            // 交互序列 ++
-            interactionSequence += 1
-            _key_layer.animateKeyPressDown()
-            _key_layer.currentInteractionSeq = interactionSequence
-        }
-
-        if key.keyType == .shift {
-            shiftLongPressTimer?.invalidate()
-            shiftLongPressTimer = Timer.scheduledTimer(
-                withTimeInterval: shiftLongPressDuration,
-                repeats: false
-            ) { [weak self] _ in
-                guard let self else { return }
-
-                self.shiftDidLongPress = true          // ✅ 必须
-                self.shiftState = .locked
-                self.updateShiftKeyUI(animated: true)
-                KBKeyboardHapticEngine.shared.trigger(for: .capsLock)
-            }
-        }
+// MARK: - touch
+private extension KBKeyboardView {
+    func handleKeyTouchBegan(point: CGPoint, key: KBKey) {
         
         if key.keyType == .character {
-            // 创建 KBPopupSession 时，contentWidth 怎么给？
-            let session = KBPopupSession(
-                key: key,
-                keyRect: key.frame,
-                position: key.keyLocation,
-                keyboardBounds: bounds,
-                safeAreaInsets: safeAreaInsets,
-                traitCollection: self.traitCollection
+            // 创建 KBPopupSession
+            let session = KBPopupSession(key: key, keyRect: key.frame, position: key.keyLocation, keyboardBounds: bounds, safeAreaInsets: safeAreaInsets, traitCollection: self.traitCollection
             )
 
-            popupStateMachine.touchBegan(
-                at: p,
-                session: session
-            )
+            popupStateMachine.touchBegan(at: point, session: session)
         }
 
         if enableClickSound {
-            let role = feedbackRole(for: id)
+            let role = feedbackRole(for: key)
             KBKeyboardFeedbackEngine.shared.trigger(for: role)
         }
     }
-
-    public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let p = touches.first?.location(in: self) else {
-            return
-        }
+    
+    func handleKeyTouchMoved(point: CGPoint, key: KBKey?) {
         // pop 状态机执行
-        popupStateMachine.touchMoved(to: p)
-        
-        // shift 长按手指移出
-        if let active = activeKeyID,
-           let activeKey = keysFlat.first(where: { $0.keyId == active }),
-           activeKey.keyType == .shift {
-
-            if keyId(at: p) != active {
-                // 手指离开 shift
-                shiftLongPressTimer?.invalidate()
-                shiftLongPressTimer = nil
-            }
-        }
+        popupStateMachine.touchMoved(to: point)
 
         // 普通滑动换键，只在 popup idle 时执行
         guard popupStateMachine.state == .idle else {
             return
         }
 
-        if let id = keyId(at: p) {
-            if id != activeKeyID {
-                // previous key release visual
-                if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
-                    _pre_key_layer.animatePressUp {
-                        // 仅恢复当前活跃的 key 的稳定态
-                        guard _pre_key_layer.currentInteractionSeq == self.interactionSequence else {
-                            return
-                        }
-                        
-                        // 动画结束， 按键恢复至稳定态
-                        _pre_key_layer.setVisualState(KBKeyVisualState.normal, animated: true)
-                    }
-                }
-                activeKeyID = id
-                
-                if let _key_layer = keyLayers[id] {
-                    _key_layer.animateKeyPressDown()
-                }
-                
-                KBKeyboardFeedbackEngine.shared.triggerSlide()
-            }
-        } else {
-            // left keys area
-            if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
-                _pre_key_layer.animatePressUp {
-                    // 仅恢复当前活跃的 key 的稳定态
-                    guard _pre_key_layer.currentInteractionSeq == self.interactionSequence else {
-                        return
-                    }
-                    
-                    // 动画结束， 按键恢复至稳定态
-                    _pre_key_layer.setVisualState(KBKeyVisualState.normal, animated: true)
-                }
-            }
-            activeKeyID = nil
+        /*
+         Idle
+          └─ touch enters key A → Active(A)
+         Active(A)
+          ├─ move within A → Active(A)
+          ├─ move to B → Release(A) → Active(B)
+          ├─ move to empty → Release(A) → Idle
+          └─ popup takeover → Freeze
+         在 popup 未介入（idle）的前提下，根据手指移动的位置，动态维护“当前活跃 key”，并确保：
+             •    同一时间只有 一个 key 处于 pressed 状态
+             •    离开旧 key → 旧 key 弹起
+             •    进入新 key → 新 key 按下
+             •    离开键区 → 当前 key 弹起并清空
+             •    所有动画都必须服从 interactionSequence，避免异步动画串台
+         */
+        keyContainerView.releaseKeyVisualInTouchMove(key: key) {
+            KBKeyboardFeedbackEngine.shared.triggerSlide()
         }
     }
-
-    public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-
-        shiftLongPressTimer?.invalidate()
-        shiftLongPressTimer = nil
-        
-        guard let p = touches.first?.location(in: self) else {
-            cleanupTouch()
-            return
-        }
-        
+    
+    func handleKeyTouchEnded(point: CGPoint, key: KBKey?) {
         // popup 状态机
-        popupStateMachine.touchEnded(at: p)
-
-        if shiftDidLongPress {
-            lastShiftTapTime = 0
-            shiftDidLongPress = false
-            cleanupTouch()
-            return
-        }
+        popupStateMachine.touchEnded(at: point)
         
         // popup 仍在活跃状态，则不再执行普通点击
         guard popupStateMachine.state == .idle else {
             return
         }
         
-        // normal tap
-        if let id = keyId(at: p), let key = keysFlat.first(where: { $0.keyId == id }) {
-            // visual release
-            if let _press_layer = keyLayers[id] {
-                _press_layer.animatePressUp {
-                    // 仅恢复当前活跃的 key 的稳定态
-                    guard _press_layer.currentInteractionSeq == self.interactionSequence else {
-                        return
-                    }
-                    
-                    // 动画结束， 按键恢复至稳定态
-                    _press_layer.setVisualState(KBKeyVisualState.normal, animated: true)
-                }
+        // 在一次触摸结束时：
+        // 如果手指最终停在某个 key 上 → 提交该 key；
+        // 如果没有停在任何 key 上 → 只恢复视觉状态，不提交输入。
+        keyContainerView.releaseKeyVisualInTouchEnd(key: key) {[weak self] (actionKey: KBKey?) in
+            guard let _new_key = actionKey else {
+                return
             }
-            performKeyAction(key)
-        } else if let prev = activeKeyID, let _pre_key_layer = keyLayers[prev] {
-            _pre_key_layer.animatePressUp {
-                // 仅恢复当前活跃的 key 的稳定态
-                guard _pre_key_layer.currentInteractionSeq == self.interactionSequence else {
-                    return
-                }
-                
-                // 动画结束， 按键恢复至稳定态
-                _pre_key_layer.setVisualState(KBKeyVisualState.normal, animated: true)
-            }
+            self?.performKeyAction(_new_key)
         }
-
-        cleanupTouch()
     }
-
-    public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        
-        shiftLongPressTimer?.invalidate()
-        shiftLongPressTimer = nil
-        
+    
+    func handleKeyTouchesCancelled() {
         // pop 状态机执行取消
         popupStateMachine.touchCancelled()
-        
-        if let id = activeKeyID, let _active_key_layer = keyLayers[id] {
-            _active_key_layer.animatePressUp {
-                // 仅恢复当前活跃的 key 的稳定态
-                guard _active_key_layer.currentInteractionSeq == self.interactionSequence else {
-                    return
-                }
-                
-                // 动画结束， 按键恢复至稳定态
-                _active_key_layer.setVisualState(KBKeyVisualState.normal, animated: true)
-            }
-        }
-        cleanupTouch()
     }
 }
 
@@ -379,7 +241,7 @@ private extension KBKeyboardView {
             // 单词大写在输入后自动回到 lowercase
             if shiftState == .uppercase {
                 shiftState = .lowercase
-                updateShiftKeyUI(animated: true)
+                keyContainerView.updateShiftKeyUI(shiftState: shiftState)
                 autoCapContext = .none
             }
         case .backspace:
@@ -390,7 +252,7 @@ private extension KBKeyboardView {
             if autoCapContext == .afterPunctuation,
                shiftState == .lowercase {
                 shiftState = .uppercase
-                updateShiftKeyUI(animated: true)
+                keyContainerView.updateShiftKeyUI(shiftState: shiftState)
             }
 
             autoCapContext = .none
@@ -399,11 +261,9 @@ private extension KBKeyboardView {
             // return 后系统也会取消一次性大写
             if shiftState == .uppercase {
                 shiftState = .lowercase
-                updateShiftKeyUI(animated: true)
+                keyContainerView.updateShiftKeyUI(shiftState: shiftState)
             }
         case .shift:
-            handleShiftTap()
-            updateShiftKeyUI(animated: true)
             break
         case .special:
             // switching layouts (assume id == "numbers" or id == "123")
@@ -428,60 +288,6 @@ private extension KBKeyboardView {
             return raw.uppercased()
         }
     }
-    
-    func updateShiftKeyUI(animated: Bool) {
-        guard let shiftLayer = keyLayers["shift"] as? KBShiftKeyLayer else {
-            return
-        }
-        shiftLayer.shiftState = shiftState
-        // 更新字母按键文字
-        updateCharacterKeysCase()
-    }
-    
-    func updateCharacterKeysCase() {
-        for key in keysFlat where key.keyType == .character {
-            guard let layer = keyLayers[key.keyId] as? KBCharacterKeyLayer else {
-                continue
-            }
-
-            let displayText: String
-            switch shiftState {
-            case .lowercase:
-                displayText = key.keyLabel.lowercased()
-            case .uppercase, .locked:
-                displayText = key.keyLabel.uppercased()
-            }
-
-            layer.updateDisplayedText(displayText)
-        }
-    }
-    
-    func handleShiftTap(currentTime: TimeInterval = CACurrentMediaTime()) {
-
-        switch shiftState {
-
-        case .lowercase:
-            // 单击 → 单次大写
-            shiftState = .uppercase
-            lastShiftTapTime = currentTime
-
-        case .uppercase:
-            // 判断是否是双击
-            if currentTime - lastShiftTapTime <= shiftDoubleTapInterval {
-                // 双击 → Caps Lock
-                shiftState = .locked
-            } else {
-                // 单击 → 回小写（✅ 关键）
-                shiftState = .lowercase
-            }
-            lastShiftTapTime = currentTime
-
-        case .locked:
-            // 再点一次 → 关闭 Caps Lock
-            shiftState = .lowercase
-            lastShiftTapTime = 0
-        }
-    }
 
     func commitText(_ text: String) {
         self.keyboardDelegate?.didSelectedKeyCap(capText: text)
@@ -495,6 +301,20 @@ private extension KBKeyboardView {
 extension KBKeyboardView: KBPopupDebugSink {
     func update(snapshot: KBPopupDebugSnapshot) {
         debugOverlayContainerView.updateSnapshot(snaps: snapshot)
+    }
+}
+
+extension KBKeyboardView: KBShiftGestureReporting {
+    func didRecognizeShiftGesture(_ gesture: ShiftGesture, shiftState state: ShiftState) {
+        shiftState = state
+        switch gesture {
+        case .tap:
+            break
+        case .longPress:
+            KBKeyboardHapticEngine.shared.trigger(for: .capsLock)
+        case .doubleTap:
+            KBKeyboardHapticEngine.shared.trigger(for: .capsLock)
+        }
     }
 }
 
@@ -515,110 +335,50 @@ private extension KBKeyboardView {
     
     func setupHierarchy() {
 
-//        addSubview(keyContainerView)
+        keyContainerView.shiftGestureDelegate = self
+        
+        addSubview(keyContainerView)
         addSubview(popupContainerView)
         addSubview(debugOverlayContainerView)
 
-//        keyContainerView.frame = bounds
+        keyContainerView.frame = bounds
         popupContainerView.frame = bounds
         debugOverlayContainerView.frame = bounds
 
-//        keyContainerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        keyContainerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         popupContainerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         debugOverlayContainerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         
         debugOverlayContainerView.addPopupDebugOverlayView()
+        bindKeyContainer()
     }
     
-    // TODO: 待结构优化项 -- 不可删
-//    func bindKeyContainer() {
-//        keyContainerView.popupTouchHandler = { [weak self] event in
-//            guard let self else { return }
-//            switch event {
-//            case .began(let point, let key):
-//                let session = KBPopupSession(
-//                    key: key,
-//                    keyRect: key.frame,
-//                    position: key.keyLocation,
-//                    keyboardBounds: self.bounds,
-//                    safeAreaInsets: self.safeAreaInsets,
-//                    traitCollection: self.traitCollection
-//                )
-//                self.popupStateMachine.touchBegan(at: point, session: session)
-//
-//            case .moved(let point):
-//                self.popupStateMachine.touchMoved(to: point)
-//
-//            case .ended(let point):
-//                self.popupStateMachine.touchEnded(at: point)
-//
-//            case .cancelled:
-//                self.popupStateMachine.touchCancelled()
-//            }
-//        }
-//    }
+    func bindKeyContainer() {
+        keyContainerView.onKeyTouchEvent = { [weak self] event in
+            guard let self else { return }
+
+            switch event {
+
+            case .began(let point, let key):
+                self.handleKeyTouchBegan(point: point, key: key)
+
+            case .moved(let point, let key):
+                self.handleKeyTouchMoved(point: point, key: key)
+
+            case .ended(let point, let key):
+                self.handleKeyTouchEnded(point: point, key: key)
+
+            case .cancelled:
+                self.handleKeyTouchesCancelled()
+            }
+        }
+    }
+    
     
     func applyInitialShiftStateIfNeeded() {
         // 系统行为：首次进入字母键盘 = 单次大写
         shiftState = .uppercase
-        updateShiftKeyUI(animated: false)
-    }
-    
-    // Sync layers: create if missing, update frames and text
-    func syncLayersWithKeys() {
-        let existingIds = Set(keyLayers.keys)
-        let targetIds = Set(keysFlat.map { $0.keyId })
-
-        // remove obsolete
-        for id in existingIds.subtracting(targetIds) {
-            keyLayers[id]?.clearTextLayer()
-            keyLayers[id]?.removeFromSuperlayer()
-            keyLayers.removeValue(forKey: id)
-        }
-
-        for key in keysFlat {
-            let id = key.keyId
-            var layer: KBBaseKeyLayer
-            let config = KBKeyLayerConfig()
-            if let l = keyLayers[id] {
-                layer = l
-            } else {
-                if key.keyType == .backspace {
-                    layer = KBDeleteKeyLayer(config: config)
-                    layer.keyRole = .function
-                } else if key.keyType == .shift {
-                    layer = KBShiftKeyLayer(config: config)
-                    layer.keyRole = .function
-                } else {
-                    layer = KBCharacterKeyLayer(config: config)
-                }
-                
-                layer.traitCollection = self.traitCollection
-                layer.setVisualState(KBKeyVisualState.normal, animated: false)
-                keyLayers[id] = layer
-                self.layer.addSublayer(layer)
-            }
-
-            // update frame without implicit animations
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            layer.frame = key.frame
-            CATransaction.commit()
-            
-            if key.keyType != .backspace && key.keyType != .shift {
-                let textLayerConfig = KBKeyTextLayerConfig()
-                layer.createTextLayerIfNeeded(textLayerConfig: textLayerConfig)
-                layer.updateTextLayer(key: key, config: textLayerConfig)
-            }
-        }
-    }
-    
-    func keyId(at point: CGPoint) -> String? {
-        return keysFlat.first { $0.frame.contains(point) }?.keyId
-    }
-    
-    func cleanupTouch() {
-        activeKeyID = nil
+        keyContainerView.updateShiftKeyUI(animated: false, shiftState: shiftState)
     }
 
     func updateLayoutEngineSize() {
@@ -644,7 +404,7 @@ private extension KBKeyboardView {
         // 2. popup 模式下，处理 shift 语义
         if shiftState == .uppercase {
             shiftState = .lowercase
-            updateShiftKeyUI(animated: true)
+            keyContainerView.updateShiftKeyUI(shiftState: shiftState)
         }
 
         // 3. 强制结束本轮触摸（🔥关键）
@@ -654,30 +414,16 @@ private extension KBKeyboardView {
     func finishActiveKeyInteraction() {
 
         // 1️⃣ 恢复当前 key 的视觉状态
-        if let id = activeKeyID,
-           let layer = keyLayers[id] {
+        keyContainerView.finishActiveKeyInteraction()
 
-            layer.animatePressUp {
-                layer.setVisualState(.normal, animated: true)
-            }
-        }
-
-        // 2️⃣ 清理触摸状态
-        activeKeyID = nil
-        shiftDidLongPress = false
-
-        // 3️⃣ 终止 popup
+        // 2️⃣ 终止 popup
         popupPresenter.hide()
     }
 }
 
 // MARK: - Key feedback
 private extension KBKeyboardView {
-    func feedbackRole(for keyId: String) -> KeyFeedbackRole {
-        guard let key = keysFlat.first(where: { $0.keyId == keyId }) else {
-            return .character
-        }
-
+    func feedbackRole(for key: KBKey) -> KeyFeedbackRole {
         switch key.keyType {
         case .character:
             return key.keyLabel == " " ? .space : .character
