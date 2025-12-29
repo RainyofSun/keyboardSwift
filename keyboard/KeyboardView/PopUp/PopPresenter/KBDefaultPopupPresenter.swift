@@ -76,9 +76,22 @@ protocol PopupPresenter: AnyObject {
     func hide()
 }
 
+// popup 高度意图回调
+protocol KBPopupLayoutIntentDelegate: AnyObject {
+    func popupRequiresExtendedKeyboard(_ required: Bool)
+}
+
+// 选词回调
+protocol KBPopupSelectedWordDelegate: AnyObject {
+    func didSelectedWord(word: String?)
+}
+
 final class DefaultPopupPresenter: PopupPresenter {
 
     weak public var debugSink: KBPopupDebugSink?
+    weak public var layoutIntentDelegate: KBPopupLayoutIntentDelegate?
+    weak public var wordDelegate: KBPopupSelectedWordDelegate?
+    
     // MARK: - Core
     private weak var popupView: KeyPopupView?
     private var session: KBPopupSession?
@@ -89,9 +102,6 @@ final class DefaultPopupPresenter: PopupPresenter {
 
     // MARK: - Selection
     private var lastPopupSelectedIndex: Int?
-
-    // MARK: - Output
-    var selectedCallback: ((String?) -> Void)?
     
     // MARK: - Layout
     private var layout: KBPopupLayoutResult?
@@ -123,6 +133,23 @@ final class DefaultPopupPresenter: PopupPresenter {
         // 3️⃣ 启动交互
         interactionController.begin()
 
+        let popupTopY = layout.popupFrame.minY
+        let keyboardTopY = session.keyboardBounds.minY
+        /*
+         Popup 分两类
+
+         A. 内嵌型 popup（不改高度）
+             •    中下行 key（例如 G、H）
+             •    popup 完全在键盘 frame 内
+             •    ❌ 不需要 height change
+
+         B. 越界型 popup（需要改高度）
+             •    第一行 key（Q / W / E）
+             •    popup 顶部超出 keyboard bounds
+             •    需要 height change
+         */
+        layoutIntentDelegate?.popupRequiresExtendedKeyboard((keyboardTopY > popupTopY))
+        
         self.layout = layout
         self.popupView = popup
         self.session = session
@@ -144,11 +171,13 @@ final class DefaultPopupPresenter: PopupPresenter {
     func commit() {
         let selected = popupView?.currentSelection
         cleanup()
-        selectedCallback?(selected)
+        self.wordDelegate?.didSelectedWord(word: selected)
     }
 
     func hide() {
         cleanup()
+        // 通知高度恢复
+        layoutIntentDelegate?.popupRequiresExtendedKeyboard(false)
     }
 }
 
@@ -196,11 +225,6 @@ private extension DefaultPopupPresenter {
         layout = nil
         lastPopupSelectedIndex = nil
     }
-
-//    @objc func tick() {
-//        guard let geometry = interactionController.tick() else { return }
-//        popupView?.apply(geometry: geometry)
-//    }
     
     @objc func tick() {
 

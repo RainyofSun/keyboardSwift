@@ -5,14 +5,14 @@
 //  Created by 一刻 on 2025/12/8.
 //
 // KeyboardViewFull.swift
-// 完整实现：系统键盘风格按键（layer 驱动） + 按下缩放动画 + UITextDocumentProxy 支持
+// 完整实现：系统键盘风格按键（layer 驱动） + 按下缩放动画
 
 import UIKit
 import AudioToolbox
 
 /*
  TODO:
- 1. 将按键的创建 抽取到KBKeyContainerView中
+ 1. popup 弹窗
  */
 // 句首状态机
 enum AutoCapContext {
@@ -29,6 +29,21 @@ enum AutoCapContext {
  │   ├─ menuLayer             // 菜单 / 工具 popup
  │
  └─ overlayContainerView      // debug / guide / 可视化层
+ 
+ 调用链路:
+ touch
+  ↓
+ popupStateMachine
+  ↓
+ popupPresenter
+  ↓
+ popupLayoutIntentDelegate (KBKeyboardView)
+  ↓
+ keyboardLayoutEngine.updatePresentation(...)
+  ↓
+ keyboardHeightDidChange
+  ↓
+ contentHeight → intrinsicContentSize
  */
 class KBKeyboardView: UIView {
     weak open var keyboardDelegate: KeyboardViewProtocol?
@@ -43,6 +58,19 @@ class KBKeyboardView: UIView {
     private var rows: [KBKeyRow] = []
     private var keysFlat: [KBKey] = []
 
+    /////////////////////////////////////////////////////////////////////
+    // 键盘自身高度变化
+    private let keyboardLayoutEngine = KBKeyboardLayoutEngine()
+
+    private var contentHeight: CGFloat = 0 {
+        didSet {
+            invalidateIntrinsicContentSize()
+            animateHeightChangeIfNeeded()
+        }
+    }
+    private var isPopupExtended = false
+    /////////////////////////////////////////////////////////////////////
+    
     /////////////////////////////////////////////////////////////////////
     // injected presenter for long-press alternatives
     private lazy var popupPresenter = DefaultPopupPresenter(popupContainerView: popupContainerView)
@@ -89,6 +117,13 @@ class KBKeyboardView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    override var intrinsicContentSize: CGSize {
+        CGSize(
+            width: UIView.noIntrinsicMetric,
+            height: contentHeight + safeAreaInsets.bottom
+        )
+    }
+    
     // MARK: - Layout
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
@@ -96,7 +131,7 @@ class KBKeyboardView: UIView {
         guard traitCollection.verticalSizeClass != previousTraitCollection?.verticalSizeClass ||
               traitCollection.horizontalSizeClass != previousTraitCollection?.horizontalSizeClass
         else { return }
-
+        keyboardLayoutEngine.refresh(environment: currentEnvironment(), animated: true)
         // ❗️只标记，不 reload
         needsRelayout = true
         setNeedsLayout()
@@ -104,7 +139,12 @@ class KBKeyboardView: UIView {
     
     override func layoutSubviews() {
         super.layoutSubviews()
-
+        if popupStateMachine.state != .idle {
+            // ❗️popup 活跃时，只允许容器尺寸变化
+            updateLayoutEngineSize()
+            return
+        }
+        
         let newSize = bounds.size
         guard superview != nil, newSize.width > 0, newSize.height > 0 else { return }
         // 尺寸没变 + 没被标记 → 不重排
@@ -129,6 +169,12 @@ class KBKeyboardView: UIView {
         }
         // 🔥 关键 2：应用系统级单次大写
         applyInitialShiftStateIfNeeded()
+        // 键盘环境采集
+        keyboardLayoutEngine.updatePresentation(
+            .normal,
+            environment: currentEnvironment(),
+            animated: true
+        )
     }
     
     public func keyboardDidDisappear() {
@@ -143,6 +189,13 @@ class KBKeyboardView: UIView {
         
         // 3. 清理旧状态
         keyContainerView.cleanup(resetShiftTap: true)
+        
+        // 4. 清理旧高度
+        keyboardLayoutEngine.updatePresentation(
+            .normal,
+            environment: currentEnvironment(),
+            animated: false
+        )
     }
     
     func reloadLayout() {
@@ -318,19 +371,53 @@ extension KBKeyboardView: KBShiftGestureReporting {
     }
 }
 
+extension KBKeyboardView: KBKeyboardLayoutDriving {
+
+    func keyboardHeightDidChange(_ height: CGFloat, animated: Bool) {
+        if animated {
+            contentHeight = height
+        } else {
+            UIView.performWithoutAnimation {
+                contentHeight = height
+                layoutIfNeeded()
+            }
+        }
+    }
+}
+
+extension KBKeyboardView: KBPopupLayoutIntentDelegate {    
+    func popupRequiresExtendedKeyboard(_ required: Bool) {
+        guard required != isPopupExtended else { return }
+        isPopupExtended = required
+
+        keyboardLayoutEngine.updatePresentation(
+            required ? .withPopup : .normal,
+            environment: currentEnvironment(),
+            animated: true
+        )
+    }
+}
+
+extension KBKeyboardView: KBPopupSelectedWordDelegate {
+    func didSelectedWord(word: String?) {
+        if let _t = word {
+            self.commitPopupText(_t)
+        }
+    }
+}
+
 private extension KBKeyboardView {
     func commonInit() {
         backgroundColor = .clear
         isOpaque = false
         isMultipleTouchEnabled = false
+        keyboardLayoutEngine.delegate = self
+        
         self.layoutEngine = KBKeyLayoutEngine(keyboardWidth: bounds.width, keyboardHeight: bounds.height, rowHeight: 52, keySpacing: 6, sidePadding: 6, topPadding: 8, bottomPadding: 8, maxKeyWidth: 120, provider: KBDefaultKeyboardProvider() as KeyboardLayoutProviding)
         
         popupPresenter.debugSink = self
-        popupPresenter.selectedCallback = {[weak self](text: String?) in
-            if let _t = text {
-                self?.commitPopupText(_t)
-            }
-        }
+        popupPresenter.layoutIntentDelegate = self
+        popupPresenter.wordDelegate = self
     }
     
     func setupHierarchy() {
@@ -374,6 +461,27 @@ private extension KBKeyboardView {
         }
     }
     
+    // 键盘环境采集
+    func currentEnvironment() -> KBKeyboardEnvironment {
+        KBKeyboardEnvironment(
+            idiom: traitCollection.userInterfaceIdiom,
+            isLandscape: bounds.width > bounds.height,
+            safeAreaBottom: safeAreaInsets.bottom
+        )
+    }
+    
+    func animateHeightChangeIfNeeded() {
+
+        UIView.animate(
+            withDuration: 0.25,
+            delay: 0,
+            options: [.curveEaseOut, .allowUserInteraction]
+        ) {
+            self.invalidateIntrinsicContentSize()
+            self.superview?.setNeedsLayout()
+            self.superview?.layoutIfNeeded()
+        }
+    }
     
     func applyInitialShiftStateIfNeeded() {
         // 系统行为：首次进入字母键盘 = 单次大写

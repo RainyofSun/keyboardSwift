@@ -10,7 +10,7 @@ import UIKit
 class ViewController: UIViewController {
 
     private lazy var textFiled = UITextField(frame: CGRect(origin: CGPointMake(30, 300), size: CGSizeMake(UIScreen.main.bounds.width - 60, 45)))
-    private lazy var keyboardInputView = KBKeyboardView(frame: CGRect(origin: CGPointZero, size: CGSizeMake(UIScreen.main.bounds.width, 250)))
+    private lazy var keyboardInputView = KBKeyboardView(frame: CGRectZero)
     
     private lazy var capView: UIView = UIView(frame: CGRect(x: 30, y: 500, width: 40, height: 45))
     
