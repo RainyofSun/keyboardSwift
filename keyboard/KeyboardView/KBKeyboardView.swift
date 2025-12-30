@@ -47,6 +47,12 @@ enum AutoCapContext {
  */
 class KBKeyboardView: UIView {
     weak open var keyboardDelegate: KeyboardViewProtocol?
+    // 高度变化代理
+    weak open var keyboardHeightDelegate: KBKeyboardLayoutDriving? {
+        didSet {
+            keyboardLayoutEngine.delegate = self.keyboardHeightDelegate
+        }
+    }
     
     let keyContainerView = KBKeyContainerView()
     let popupContainerView = KBPopupContainerView()
@@ -62,12 +68,6 @@ class KBKeyboardView: UIView {
     // 键盘自身高度变化
     private let keyboardLayoutEngine = KBKeyboardLayoutEngine()
 
-    private var contentHeight: CGFloat = 0 {
-        didSet {
-            invalidateIntrinsicContentSize()
-            animateHeightChangeIfNeeded()
-        }
-    }
     private var isPopupExtended = false
     /////////////////////////////////////////////////////////////////////
     
@@ -116,13 +116,6 @@ class KBKeyboardView: UIView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override var intrinsicContentSize: CGSize {
-        CGSize(
-            width: UIView.noIntrinsicMetric,
-            height: contentHeight + safeAreaInsets.bottom
-        )
-    }
     
     // MARK: - Layout
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -371,20 +364,6 @@ extension KBKeyboardView: KBShiftGestureReporting {
     }
 }
 
-extension KBKeyboardView: KBKeyboardLayoutDriving {
-
-    func keyboardHeightDidChange(_ height: CGFloat, animated: Bool) {
-        if animated {
-            contentHeight = height
-        } else {
-            UIView.performWithoutAnimation {
-                contentHeight = height
-                layoutIfNeeded()
-            }
-        }
-    }
-}
-
 extension KBKeyboardView: KBPopupLayoutIntentDelegate {    
     func popupRequiresExtendedKeyboard(_ required: Bool) {
         guard required != isPopupExtended else { return }
@@ -411,7 +390,7 @@ private extension KBKeyboardView {
         backgroundColor = .clear
         isOpaque = false
         isMultipleTouchEnabled = false
-        keyboardLayoutEngine.delegate = self
+        keyboardLayoutEngine.delegate = self.keyboardHeightDelegate
         
         self.layoutEngine = KBKeyLayoutEngine(keyboardWidth: bounds.width, keyboardHeight: bounds.height, rowHeight: 52, keySpacing: 6, sidePadding: 6, topPadding: 8, bottomPadding: 8, maxKeyWidth: 120, provider: KBDefaultKeyboardProvider() as KeyboardLayoutProviding)
         
@@ -468,19 +447,6 @@ private extension KBKeyboardView {
             isLandscape: bounds.width > bounds.height,
             safeAreaBottom: safeAreaInsets.bottom
         )
-    }
-    
-    func animateHeightChangeIfNeeded() {
-
-        UIView.animate(
-            withDuration: 0.25,
-            delay: 0,
-            options: [.curveEaseOut, .allowUserInteraction]
-        ) {
-            self.invalidateIntrinsicContentSize()
-            self.superview?.setNeedsLayout()
-            self.superview?.layoutIfNeeded()
-        }
     }
     
     func applyInitialShiftStateIfNeeded() {

@@ -26,6 +26,7 @@ class ViewController: UIViewController {
         self.textFiled.inputView = self.keyboardInputView
         self.textFiled.delegate = self
         self.keyboardInputView.keyboardDelegate = self
+        self.keyboardInputView.keyboardHeightDelegate = self
         
         DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 2, execute: {
             self.textFiled.becomeFirstResponder()
@@ -59,5 +60,22 @@ extension ViewController: KeyboardViewProtocol {
     
     func deleteText() {
         
+    }
+}
+
+extension ViewController: KBKeyboardLayoutDriving {
+    
+    func keyboardHeightDidChange(_ height: CGFloat, animated: Bool) {
+        guard let inputView = self.textFiled.inputView else {
+            return
+        }
+
+        if animated {
+            UIView.animate(withDuration: 0.25) {
+                var frame = inputView.frame
+                frame.size.height = height + self.view.safeAreaInsets.bottom
+                inputView.frame = frame
+            }
+        }
     }
 }
