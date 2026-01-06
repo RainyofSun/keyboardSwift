@@ -121,21 +121,38 @@ private extension KeyPopupView {
 
         if textLayers.count != layoutItems.count {
             textLayers.forEach { $0.removeFromSuperlayer() }
-            textLayers.removeAll()
         }
         
-        layoutItems.forEach { (element: CandidateLayoutItem) in
-            let layer = CATextLayer()
-            layer.contentsScale = UIScreen.main.scale
-            layer.alignmentMode = .center
-            layer.foregroundColor = UIColor.label.cgColor
-            layer.font = font
-            layer.fontSize = font.pointSize
-            layer.string = element.text
-            layer.frame = element.frame
-            self.layer.addSublayer(layer)
-            textLayers.append(layer)
+        layoutItems.enumerated().forEach { (index: Int, element: CandidateLayoutItem) in
+            var layer: CATextLayer?
+            if index < textLayers.count {
+                layer = textLayers[index]
+            } else {
+                layer = CATextLayer()
+                layer?.contentsScale = UIScreen.main.scale
+                layer?.alignmentMode = .center
+                layer?.foregroundColor = UIColor.label.cgColor
+                layer?.font = font
+                layer?.fontSize = font.pointSize
+                layer?.string = element.text
+                layer?.backgroundColor = UIColor.red.withAlphaComponent(0.5).cgColor
+                if let _layer = layer {
+                    verticallyCenterTextLayer(_layer, in: element.frame)
+                    self.layer.addSublayer(_layer)
+                    textLayers.append(_layer)
+                }
+            }
         }
+    }
+    
+    func verticallyCenterTextLayer(_ layer: CATextLayer, in rect: CGRect) {
+        let textHeight = font.ascender - font.descender
+        let offsetY = (rect.height - textHeight) / 2 - font.descender
+
+        var frame = rect
+        frame.origin.y += offsetY
+        frame.size.height = textHeight
+        layer.frame = frame
     }
 }
 

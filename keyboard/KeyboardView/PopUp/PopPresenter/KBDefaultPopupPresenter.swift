@@ -270,7 +270,7 @@ private extension DefaultPopupPresenter {
             headOffsetX: state.headOffsetX
         )
         #if DEBUG
-        let snapshot: KBPopupDebugSnapshot = KBPopupDebugSnapshot(keyboardBounds: _session.keyboardBounds, safeAreaInsets: _session.safeAreaInsets, keyRect: layout.keyFrameInPopup, popupFrame: popup.bounds, popupPath: path.cgPath)
+        let snapshot: KBPopupDebugSnapshot = KBPopupDebugSnapshot(keyboardBounds: _session.keyboardBounds, safeAreaInsets: _session.safeAreaInsets, keyRect: layout.keyFrameInPopup, popupFrame: popup.frame, popupPath: path.cgPath)
         debugSink?.update(snapshot: snapshot)
         #endif
         

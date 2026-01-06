@@ -30,7 +30,7 @@ final class KBPopupInteractionController {
     }
     
     func updateDrag(point: CGPoint) {
-        followAnimator.updateTarget(point.x)
+//        followAnimator.updateTarget(point.x)
     }
     
     func end() {

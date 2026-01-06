@@ -10,7 +10,7 @@ import UIKit
 struct KBPopupDebugSnapshot {
     let keyboardBounds: CGRect
     let safeAreaInsets: UIEdgeInsets
-    let keyRect: CGRect              // keyboard 坐标系
+    let keyRect: CGRect               // keyboard 坐标系
     let popupFrame: CGRect            // keyboard 坐标系
     let popupPath: CGPath?            // 最终 path
 }

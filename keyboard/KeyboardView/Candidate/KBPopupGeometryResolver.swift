@@ -172,7 +172,7 @@ private extension KBPopupGeometryResolver {
         for (item, width) in zip(items, widths) {
             let frame = CGRect(
                 x: x,
-                y: centerY - session.keyRect.height / 2,
+                y: session.contentInset.top,
                 width: width,
                 height: session.keyRect.height
             )
