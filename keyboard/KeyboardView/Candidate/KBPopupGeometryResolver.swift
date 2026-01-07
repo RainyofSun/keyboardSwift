@@ -86,14 +86,16 @@ enum KBPopupGeometryResolver {
     
     static func resolve(session: KBPopupSession) -> KBPopupLayoutResult {
 
-        let measurer = KBCandidateWidthMeasurer(font: session.itemFont)
         let items = session.key.alternatives ?? []
+        let count = items.count
 
-        let contentWidth = measurer.totalWidth(
-            items: items,
-            itemSpacing: session.itemSpacing,
-            contentInset: session.contentInset
-        )
+        let candidateWidth = candidateWidth(session: session)
+
+        let contentWidth =
+            CGFloat(count) * candidateWidth
+            + CGFloat(max(0, count - 1)) * session.itemSpacing
+            + session.contentInset.left
+            + session.contentInset.right
 
         // 1️⃣ popupFrame（keyboard 坐标）
         let popupHeight =
@@ -102,10 +104,12 @@ enum KBPopupGeometryResolver {
             + session.contentInset.bottom
 
         var popupX = session.keyRect.midX - contentWidth / 2
-        popupX = max(8, min(
-            popupX,
-            session.keyboardBounds.width - contentWidth - 8
-        ))
+        popupX = max(8,
+            min(
+                popupX,
+                session.keyboardBounds.width - contentWidth - 8
+            )
+        )
 
         let popupY = session.keyRect.maxY - popupHeight
 
@@ -125,9 +129,9 @@ enum KBPopupGeometryResolver {
         // 3️⃣ candidateLayouts（popup 坐标）
         let candidateLayouts = layoutCandidates(
             items: items,
-            measurer: measurer,
             keyFrameInPopup: keyFrameInPopup,
             popupBounds: popupFrame,
+            candidateWidth: candidateWidth,
             session: session
         )
 
@@ -141,59 +145,67 @@ enum KBPopupGeometryResolver {
 
 private extension KBPopupGeometryResolver {
     
+    static func candidateWidth(session: KBPopupSession) -> CGFloat {
+
+        let baseKeyWidth = session.keyRect.width
+
+        return min(
+            max(
+                baseKeyWidth * session.candidateWidthScale,
+                session.minCandidateWidth
+            ),
+            session.maxCandidateWidth
+        )
+    }
+    
     static func layoutCandidates(
         items: [CandidateItem],
-        measurer: KBCandidateWidthMeasurer,
         keyFrameInPopup: CGRect,
         popupBounds: CGRect,
+        candidateWidth: CGFloat,
         session: KBPopupSession
     ) -> [CandidateLayoutItem] {
-        
+
         guard !items.isEmpty else { return [] }
-        
-        let widths = items.map { measurer.width(for: $0.text) }
-        
-        let contentWidth =
-            widths.reduce(0, +)
-            + CGFloat(items.count - 1) * session.itemSpacing
-        
+
         var x = contentStartX(
             keyFrame: keyFrameInPopup,
-            contentWidth: contentWidth,
             popupBounds: popupBounds,
             position: session.position,
             contentInset: session.contentInset
         )
-        
-        let centerY = keyFrameInPopup.midY
-        
+
         var result: [CandidateLayoutItem] = []
-        
-        for (item, width) in zip(items, widths) {
+
+        for item in items {
             let frame = CGRect(
                 x: x,
                 y: session.contentInset.top,
-                width: width,
+                width: candidateWidth,
                 height: session.keyRect.height
             )
-            
+
             result.append(
-                CandidateLayoutItem(text: item.text, frame: frame)
+                CandidateLayoutItem(
+                    text: item.text,
+                    frame: frame
+                )
             )
-            
-            x += width + session.itemSpacing
+
+            x += candidateWidth + session.itemSpacing
         }
-        
+
         return result
     }
     
     static func contentStartX(
         keyFrame: CGRect,
-        contentWidth: CGFloat,
         popupBounds: CGRect,
         position: KeyPosition,
         contentInset: UIEdgeInsets
     ) -> CGFloat {
+        
+        let contentWidth = popupBounds.width
         
         switch position {
             

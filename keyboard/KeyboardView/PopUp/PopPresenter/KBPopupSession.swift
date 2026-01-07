@@ -25,7 +25,10 @@ struct KBPopupSession {
     let itemSpacing: CGFloat = 8
     // pop 内词的字体大小
     let itemFont: UIFont = UIFont.systemFont(ofSize: 20, weight: .medium)
-
+    let candidateWidthScale: CGFloat = 0.95   // e.g. 0.95
+    let minCandidateWidth: CGFloat = 32     // e.g. 32
+    let maxCandidateWidth: CGFloat = 72    // e.g. 72
+    
     // MARK: - 环境（Keyboard 世界）
     let keyboardBounds: CGRect       // keyboard.bounds
     let safeAreaInsets: UIEdgeInsets

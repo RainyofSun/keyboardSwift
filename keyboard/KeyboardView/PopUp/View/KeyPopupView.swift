@@ -7,6 +7,19 @@
 
 import UIKit
 
+/*
+ KeyPopupView
+  ├─ shapeLayer            // popup 外形
+  ├─ highlightLayer        // 当前候选高亮
+  ├─ KBCenteredTextLayer   // 每个候选词
+  │    └─ CATextLayer      // 真正画字
+  └─ KBPopupDebugOverlayLayer (DEBUG only)
+       ├─ candidateFrames
+       ├─ textBounds
+       ├─ baselines
+       ├─ ascender / descender
+       └─ FPS / frame skip
+ */
 public struct PopupGeometry {
     let path: CGPath
     let blurAlpha: CGFloat
@@ -29,7 +42,7 @@ public class KeyPopupView: UIView {
     private let keyPosition: KeyPosition
 
     private var layoutItems: [CandidateLayoutItem] = []
-    private var textLayers: [CATextLayer] = []
+    private var textLayers: [KBCenteredTextLayer] = []
 
     private let shapeLayer = CAShapeLayer()
     private let highlightLayer = CAShapeLayer()
@@ -113,6 +126,12 @@ public class KeyPopupView: UIView {
             self.alpha = 1
         }
     }
+    
+
+    func makeTextDebugSnapshot() -> [KBCenteredTextDebugInfo] {
+        return textLayers.map { $0.debugInfo }
+    }
+
 }
 
 private extension KeyPopupView {
@@ -124,35 +143,20 @@ private extension KeyPopupView {
         }
         
         layoutItems.enumerated().forEach { (index: Int, element: CandidateLayoutItem) in
-            var layer: CATextLayer?
+            var layer: KBCenteredTextLayer?
             if index < textLayers.count {
                 layer = textLayers[index]
             } else {
-                layer = CATextLayer()
-                layer?.contentsScale = UIScreen.main.scale
-                layer?.alignmentMode = .center
-                layer?.foregroundColor = UIColor.label.cgColor
+                layer = KBCenteredTextLayer()
                 layer?.font = font
-                layer?.fontSize = font.pointSize
-                layer?.string = element.text
-                layer?.backgroundColor = UIColor.red.withAlphaComponent(0.5).cgColor
+                layer?.text = element.text
+                layer?.frame = element.frame
                 if let _layer = layer {
-                    verticallyCenterTextLayer(_layer, in: element.frame)
                     self.layer.addSublayer(_layer)
                     textLayers.append(_layer)
                 }
             }
         }
-    }
-    
-    func verticallyCenterTextLayer(_ layer: CATextLayer, in rect: CGRect) {
-        let textHeight = font.ascender - font.descender
-        let offsetY = (rect.height - textHeight) / 2 - font.descender
-
-        var frame = rect
-        frame.origin.y += offsetY
-        frame.size.height = textHeight
-        layer.frame = frame
     }
 }
 
